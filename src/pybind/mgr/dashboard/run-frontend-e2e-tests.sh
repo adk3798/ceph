@@ -57,6 +57,12 @@ if [ "$BASE_URL" == "" ]; then
     ./bin/ceph dashboard set-rgw-api-secret-key $(./bin/radosgw-admin user info --uid=dev | jq -r .keys[0].secret_key)
     # Set SSL verify to False
     ./bin/ceph dashboard set-rgw-api-ssl-verify False
+    # Enable Prometheus module
+    ./bin/ceph mgr module enable prometheus
+    # Set Alertmanager API Host
+    ./bin/ceph dashboard set-alertmanager-api-host 'http://localhost:9093'
+    # Set Prometheus server
+    ./bin/ceph dashboard set-prometheus-api-host 'http://localhost:9090'
 
     BASE_URL=$(./bin/ceph mgr services | jq -r .dashboard)
 fi
