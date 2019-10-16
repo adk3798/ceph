@@ -2,7 +2,7 @@
 // https://github.com/angular/protractor/blob/master/lib/config.ts
 
 const { SpecReporter } = require('jasmine-spec-reporter');
-let failFast = require("protractor-fail-fast");
+//let failFast = require("protractor-fail-fast");
 
 const config = {
   SELENIUM_PROMISE_MANAGER: false,
@@ -49,10 +49,10 @@ const config = {
       imageToAscii: 'none',
       clearFoldersBeforeTest: true
     },
-    failFast.init()
+    //failFast.init()
   ],
   afterLaunch: function() {
-    failFast.clean();
+    //failFast.clean();
   }
 };
 
