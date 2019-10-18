@@ -59,6 +59,7 @@ if [ "$BASE_URL" == "" ]; then
     ./bin/ceph dashboard set-rgw-api-ssl-verify False
     # Enable Prometheus module
     ./bin/ceph mgr module enable prometheus
+    sleep 10
     # Set Alertmanager API Host
     ./bin/ceph dashboard set-alertmanager-api-host 'http://localhost:9093'
     # Set Prometheus server
