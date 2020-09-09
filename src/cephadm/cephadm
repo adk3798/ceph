@@ -2275,9 +2275,12 @@ LimitNOFILE=1048576
 LimitNPROC=1048576
 EnvironmentFile=-/etc/environment
 ExecStartPre=-{container_path} rm ceph-{fsid}-%i
+ExecStartPre=-/bin/bash -c 'echo "Service Started $$(date)\\n" >> {log_dir}/{fsid}/%i.past.service.log'
 ExecStart=/bin/bash {data_dir}/{fsid}/%i/unit.run
 ExecStop=-{container_path} stop ceph-{fsid}-%i
 ExecStopPost=-/bin/bash {data_dir}/{fsid}/%i/unit.poststop
+ExecStopPost=-/bin/bash -c 'cat {log_dir}/{fsid}/%i.service.log >> {log_dir}/{fsid}/%i.past.service.log'
+ExecStopPost=-/bin/bash -c 'echo "\\nService Stopped $$(date)" >> {log_dir}/{fsid}/%i.past.service.log'
 KillMode=none
 Restart=on-failure
 RestartSec=10s
@@ -2285,6 +2288,8 @@ TimeoutStartSec=120
 TimeoutStopSec=120
 StartLimitInterval=30min
 StartLimitBurst=5
+StandardOutput=file:{log_dir}/{fsid}/%i.service.log
+StandardError=file:{log_dir}/{fsid}/%i.service.log
 {extra_args}
 [Install]
 WantedBy=ceph-{fsid}.target
@@ -2292,6 +2297,7 @@ WantedBy=ceph-{fsid}.target
     container_path=container_path,
     fsid=fsid,
     data_dir=args.data_dir,
+    log_dir=args.log_dir,
     extra_args=extra_args)
 
     return u
