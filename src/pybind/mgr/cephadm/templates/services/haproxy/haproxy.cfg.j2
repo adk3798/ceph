@@ -51,7 +51,7 @@ frontend stats
 
 frontend rgw-frontend
 {% if spec.ha_proxy_frontend_ssl_certificate %}
-    bind {{ virtual_ip_address }}:{{ spec.ha_proxy_frontend_ssl_port }} ssl crt {{ spec.ha_proxy_frontend_ssl_certificate }}
+    bind {{ virtual_ip_address }}:{{ spec.ha_proxy_frontend_ssl_port }} ssl crt /var/lib/haproxy/haproxy.pem
 {% else %}
     bind {{ virtual_ip_address }}:{{ spec.frontend_port }}
 {% endif %}

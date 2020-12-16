@@ -69,16 +69,21 @@ class HAproxyService(CephService):
 
             haproxy_conf = self.mgr.template.render('services/haproxy/haproxy.cfg.j2', ha_context)
 
-            config_file = {
+            config_files = {
                 'files': {
                     "haproxy.cfg": haproxy_conf,
                 }
             }
+            if spec.ha_proxy_frontend_ssl_certificate:
+                ssl_cert = spec.ha_proxy_frontend_ssl_certificate
+                if isinstance(ssl_cert, list):
+                    ssl_cert = '\n'.join(ssl_cert)
+                config_files['files']['haproxy.pem'] = ssl_cert
 
-            return config_file, []
+            return config_files, []
         else:
-            config_file = {'files': {}}
-            return config_file, []
+            config_files = {'files': {}}
+            return config_files, []
 
 
 class KeepAlivedService(CephService):
