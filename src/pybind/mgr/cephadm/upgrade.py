@@ -8,6 +8,7 @@ import orchestrator
 from cephadm.serve import CephadmServe
 from cephadm.utils import name_to_config_section, CEPH_UPGRADE_ORDER
 from orchestrator import OrchestratorError, DaemonDescription
+from orchestrator._interface import daemon_type_to_service, service_to_daemon_types
 
 if TYPE_CHECKING:
     from .module import CephadmOrchestrator
@@ -177,7 +178,9 @@ class CephadmUpgrade:
             if not self.upgrade_state or self.upgrade_state.paused:
                 return False
 
-            r = self.mgr.cephadm_services[s.daemon_type].ok_to_stop([s.daemon_id])
+            # setting force flag to retain old functionality. Should revisit.
+            r = self.mgr.cephadm_services[daemon_type_to_service(s.daemon_type)].ok_to_stop([
+                s.daemon_id], force=True)
 
             if not r.retval:
                 logger.info(f'Upgrade: {r.stdout}')

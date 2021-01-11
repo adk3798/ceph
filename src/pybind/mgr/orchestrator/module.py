@@ -368,10 +368,11 @@ class OrchestratorCli(OrchestratorClientMixin, MgrModule,
 
     @_cli_write_command(
         'orch host maintenance enter',
-        'name=hostname,type=CephString',
+        'name=hostname,type=CephString '
+        'name=force,type=CephBool,req=false',
         desc='Prepare a host for maintenance by shutting down and disabling all Ceph daemons (cephadm only)')
-    def _host_maintenance_enter(self, hostname: str):
-        completion = self.enter_host_maintenance(hostname)
+    def _host_maintenance_enter(self, hostname: str, force: bool = False):
+        completion = self.enter_host_maintenance(hostname, force=force)
         self._orchestrator_wait([completion])
         raise_if_exception(completion)
 

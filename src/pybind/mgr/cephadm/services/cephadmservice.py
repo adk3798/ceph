@@ -207,7 +207,7 @@ class CephadmService(metaclass=ABCMeta):
             except MonCommandFailed as e:
                 logger.warning('Failed to set Dashboard config for %s: %s', service_name, e)
 
-    def ok_to_stop(self, daemon_ids: List[str]) -> HandleCommandResult:
+    def ok_to_stop(self, daemon_ids: List[str], force: bool = False) -> HandleCommandResult:
         names = [f'{self.TYPE}.{d_id}' for d_id in daemon_ids]
         out = f'It is presumed safe to stop {names}'
         err = f'It is NOT safe to stop {names}'
@@ -229,6 +229,24 @@ class CephadmService(metaclass=ABCMeta):
         out = f'{out}: {r.stdout}' if r.stdout else out
         logger.info(out)
         return HandleCommandResult(r.retval, out, r.stderr)
+
+    def _enough_daemons_to_stop(self, daemon_type: str, daemon_ids: List[str], service: str, low_limit: int) -> Tuple[bool, str]:
+        # Provides a warning about if it possible or not to stop <n> daemons in a service
+        names = [f'{daemon_type}.{d_id}' for d_id in daemon_ids]
+        out = f'It is presumed safe to stop {names}'
+        warn = False
+        number_of_daemons = len(self.mgr.cache.get_daemons_by_type(daemon_type))
+        if number_of_daemons <= low_limit:
+            warn = True
+            daemon_str = 'only daemon' if number_of_daemons == 1 else f'{number_of_daemons} daemons'
+            daemons_left_word = 'daemon' if number_of_daemons - low_limit == 1 else 'daemons'
+            daemons_left_str = 'no daemons' if number_of_daemons - \
+                low_limit == 0 else f'{str(number_of_daemons - low_limit)} {daemons_left_word}'
+            low_limit_daemons_str = f'{low_limit} daemon' if low_limit == 1 else f'{low_limit} daemons'
+            out = (f'WARNING: Stopping {daemon_str} in {service} service. '
+                   f'Service will not be operational with {daemons_left_str}. '
+                   f'At least {low_limit_daemons_str} must be running to guarantee service. ')
+        return (warn, out)
 
     def pre_remove(self, daemon: DaemonDescription) -> None:
         """
