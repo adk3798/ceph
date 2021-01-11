@@ -1345,7 +1345,7 @@ To check that the host is reachable:
                                            addr=spec.addr,
                                            error_ok=True, no_fsid=True)
         if code:
-            # err will contain stdout and stderr, so we filter on the message text to 
+            # err will contain stdout and stderr, so we filter on the message text to
             # only show the errors
             errors = [_i.replace("ERROR: ", "") for _i in err if _i.startswith('ERROR')]
             raise OrchestratorError('New host %s (%s) failed check(s): %s' % (
@@ -1416,12 +1416,18 @@ To check that the host is reachable:
             if dd.hostname == hostname:
                 daemon_map[dd.daemon_type].append(dd.daemon_id)
 
+        info = []  # type: List[str]
         for daemon_type, daemon_ids in daemon_map.items():
             r = self.cephadm_services[daemon_type_to_service(daemon_type)].ok_to_stop(daemon_ids)
             if r.retval:
                 self.log.error(f'It is NOT safe to stop host {hostname}')
                 return r.retval, r.stderr
+            if r.stdout:
+                info.append(r.stdout)
 
+        if info:
+            return 0, (f'It is presumed safe to stop host {hostname}. ' +
+                       'However, note these affects on the cluster:\n' + '\n'.join(info))
         return 0, f'It is presumed safe to stop host {hostname}'
 
     @trivial_completion
@@ -1482,12 +1488,15 @@ To check that the host is reachable:
 
         host_daemons = self.cache.get_daemon_types(hostname)
         self.log.debug("daemons on host {}".format(','.join(host_daemons)))
+        extra_info = []
         if host_daemons:
             # daemons on this host, so check the daemons can be stopped
             # and if so, place the host into maintenance by disabling the target
             rc, msg = self._host_ok_to_stop(hostname)
             if rc:
                 raise OrchestratorError(msg, errno=rc)
+            if msg:
+                extra_info = msg.split('/n')[1:]
 
             # call the host-maintenance function
             out, _err, _code = self._run_cephadm(hostname, cephadmNoImage, "host-maintenance",
@@ -1521,6 +1530,9 @@ To check that the host is reachable:
 
         self._set_maintenance_healthcheck()
 
+        if extra_info:
+            return (f"Ceph cluster {self._cluster_fsid} on {hostname} moved to maintenance" +
+                    'Note these affects on the cluster:\n' + '\n'.join(extra_info))
         return f"Ceph cluster {self._cluster_fsid} on {hostname} moved to maintenance"
 
     @trivial_completion

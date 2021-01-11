@@ -2,6 +2,8 @@ import logging
 import os
 from typing import List, Any, Tuple, Dict
 
+from mgr_module import HandleCommandResult
+
 from orchestrator import DaemonDescription
 from ceph.deployment.service_spec import AlertManagerSpec
 from cephadm.services.cephadmservice import CephadmService, CephadmDaemonSpec
@@ -253,6 +255,20 @@ class PrometheusService(CephadmService):
             'dashboard set-prometheus-api-host',
             service_url
         )
+
+    def ok_to_stop(self, daemon_ids: List[str]) -> HandleCommandResult:
+        # always ok to stop as prometheus is a third party daemon that should
+        # not compromisse any data by stopping.
+        # Only Provide a warning if Prometheus daemon being check is only in the service.
+
+        msg = ''
+        prometheus_daemons = self.mgr.cache.get_daemons_by_type(self.TYPE)
+        if len(prometheus_daemons) == 1:
+            # if only one prometheus daemon, the one we are checking to stop
+            # must be the only one
+            msg = ('NOTICE: Stopping only daemon in Prometheus service. Service will not be ' +
+                   'active while this daemon is stopped')
+        return HandleCommandResult(0, msg, None)
 
 
 class NodeExporterService(CephadmService):
