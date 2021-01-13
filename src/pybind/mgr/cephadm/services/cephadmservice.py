@@ -508,6 +508,23 @@ class MgrService(CephService):
         num = len(mgr_map.get('standbys'))
         return bool(num)
 
+    def ok_to_stop(self, daemon_ids: List[str], force: bool = False) -> HandleCommandResult:
+        # ok to stop if there is more than 1 mgr and not trying to stop the active mgr
+
+        warn, warn_message = self._enough_daemons_to_stop(self.TYPE, daemon_ids, 'Mgr', 1)
+        if warn:
+            warn_message = ('ALERT: Cannot stop last remaining Mgr daemon. ' +
+                            'Please deploy more Mgr daemons before stopping this one. ')
+            return HandleCommandResult(-errno.EBUSY, None, warn_message)
+
+        mgr_daemons = self.mgr.cache.get_daemons_by_type(self.TYPE)
+        active = self.get_active_daemon(mgr_daemons).daemon_id
+        if active in daemon_ids:
+            warn_message='ALERT: Cannot stop active Mgr daemon, Please switch active Mgrs with \'ceph mgr fail %s\'' % active
+            return HandleCommandResult(-errno.EBUSY, '', warn_message)
+
+        return HandleCommandResult(0, warn_message, None)
+
 
 class MdsService(CephService):
     TYPE = 'mds'
