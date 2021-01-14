@@ -1,3 +1,4 @@
+import errno
 import json
 import re
 import logging
@@ -772,6 +773,32 @@ class RgwService(CephService):
             result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             self.mgr.log.info('updated period')
 
+    def ok_to_stop(self, daemon_ids: List[str], force: bool = False) -> HandleCommandResult:
+        # if load balancer (ha-rgw) is present block if only 1 daemon up otherwise ok
+        # if no load balancer, warn if > 1 daemon, block if only 1 daemon
+        def ha_rgw_present() -> bool:
+            for name, spec in self.mgr.spec_store.specs.items():
+                if spec.service_type == 'ha-rgw':
+                    return True
+            return False
+
+        # if only 1 rgw, alert user (this is not passable with --force)
+        warn, warn_message = self._enough_daemons_to_stop(self.TYPE, daemon_ids, 'RGW', 1)
+        if warn:
+            warn_message = ("ALERT: Cannot stop last remaining RGW daemon. " +
+                            "Please deploy more RGW daemons before stopping this one. ")
+            return HandleCommandResult(-errno.EBUSY, None, warn_message)
+
+        # if reached here, there is > 1 rgw daemon.
+        # Say okay if load balancer present or force flag set
+        if ha_rgw_present() or force:
+            return HandleCommandResult(0, warn_message, None)
+
+        # if reached here, > 1 RGW daemon, no load balancer and no force flag.
+        # Provide warning
+        warn_message = "WARNING: Removing RGW daemons can cause clients to lose connectivity. "
+        return HandleCommandResult(-errno.EBUSY, None, warn_message)
+
 
 class RbdMirrorService(CephService):
     TYPE = 'rbd-mirror'
@@ -790,6 +817,15 @@ class RbdMirrorService(CephService):
         daemon_spec.keyring = keyring
 
         return daemon_spec
+
+    def ok_to_stop(self, daemon_ids: List[str], force: bool = False) -> HandleCommandResult:
+        # ok to stop if there is more than 1 rbd-mirror
+        warn, warn_message = self._enough_daemons_to_stop(self.TYPE, daemon_ids, 'Rbdmirror', 1)
+        if warn:
+            warn_message = ('ALERT: Cannot stop last remaining Rbdmirror daemon. ' +
+                            'Please deploy more Rbdmirror daemons before stopping this one. ')
+            return HandleCommandResult(-errno.EBUSY, None, warn_message)
+        return HandleCommandResult(0, warn_message, None)
 
 
 class CrashService(CephService):

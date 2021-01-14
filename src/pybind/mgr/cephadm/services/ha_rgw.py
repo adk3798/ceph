@@ -1,6 +1,9 @@
+import errno
 import json
 import logging
 from typing import List, cast, Tuple, Dict, Any
+
+from mgr_module import HandleCommandResult
 
 from ceph.deployment.service_spec import HA_RGWSpec
 
@@ -149,3 +152,20 @@ class HA_RGWService(CephService):
         }
 
         return config_file, []
+
+    def ok_to_stop(self, daemon_ids: List[str], force: bool = False) -> HandleCommandResult:
+        # warn if trying to take down last haproxy or keepalived daemon.
+        # warning is passable with --force flag
+        daemon_type = None
+        if daemon_ids[0] and daemon_ids[0] == 'haproxy':
+            daemon_type = 'haproxy'
+        elif daemon_ids[0] and daemon_ids[0] == 'keepalived':
+            daemon_type = 'keepalived'
+
+        # if this is called with daemons not of type haproxy or keepalived something went wrong
+        assert daemon_type
+
+        warn, warn_message = self._enough_daemons_to_stop(self.TYPE, daemon_ids, 'RGW', 1)
+        if warn and not force:
+            return HandleCommandResult(-errno.EBUSY, None, warn_message)
+        return HandleCommandResult(0, warn_message, None)
