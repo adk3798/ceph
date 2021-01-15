@@ -524,7 +524,7 @@ class MgrService(CephService):
         mgr_daemons = self.mgr.cache.get_daemons_by_type(self.TYPE)
         active = self.get_active_daemon(mgr_daemons).daemon_id
         if active in daemon_ids:
-            warn_message='ALERT: Cannot stop active Mgr daemon, Please switch active Mgrs with \'ceph mgr fail %s\'' % active
+            warn_message = 'ALERT: Cannot stop active Mgr daemon, Please switch active Mgrs with \'ceph mgr fail %s\'' % active
             return HandleCommandResult(-errno.EBUSY, '', warn_message)
 
         return HandleCommandResult(0, warn_message, None)
@@ -779,10 +779,17 @@ class RgwService(CephService):
     def ok_to_stop(self, daemon_ids: List[str], force: bool = False) -> HandleCommandResult:
         # if load balancer (ha-rgw) is present block if only 1 daemon up otherwise ok
         # if no load balancer, warn if > 1 daemon, block if only 1 daemon
+
         def ha_rgw_present() -> bool:
-            for name, spec in self.mgr.spec_store.specs.items():
-                if spec.service_type == 'ha-rgw':
-                    return True
+            running_ha_rgw_daemons = [
+                daemon for daemon in self.mgr.cache.get_daemons_by_type('ha-rgw') if daemon.status == 1]
+            running_haproxy_daemons = [
+                daemon for daemon in running_ha_rgw_daemons if daemon.daemon_type == 'haproxy']
+            running_keepalived_daemons = [
+                daemon for daemon in running_ha_rgw_daemons if daemon.daemon_type == 'keepalived']
+            # check that there is at least one haproxy and keepalived daemon running
+            if running_haproxy_daemons and running_keepalived_daemons:
+                return True
             return False
 
         # if only 1 rgw, alert user (this is not passable with --force)

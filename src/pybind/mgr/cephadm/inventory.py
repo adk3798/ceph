@@ -9,6 +9,7 @@ from ceph.deployment import inventory
 from ceph.deployment.service_spec import ServiceSpec
 from ceph.utils import str_to_datetime, datetime_to_str, datetime_now
 from orchestrator import OrchestratorError, HostSpec, OrchestratorEvent
+from orchestrator._interface import daemon_type_to_service, service_to_daemon_types
 
 if TYPE_CHECKING:
     from .module import CephadmOrchestrator
@@ -459,7 +460,7 @@ class HostCache():
         result = []   # type: List[orchestrator.DaemonDescription]
         for host, dm in self.daemons.items():
             for name, d in dm.items():
-                if d.daemon_type == service_type:
+                if d.daemon_type in service_to_daemon_types(service_type):
                     result.append(d)
         return result
 
