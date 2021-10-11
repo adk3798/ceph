@@ -907,89 +907,101 @@ class CephadmServe:
     def _check_daemons(self) -> None:
 
         daemons = self.mgr.cache.get_daemons()
+        self.log.info(daemons)
         daemons_post: Dict[str, List[orchestrator.DaemonDescription]] = defaultdict(list)
+        errors: List[str] = []
         for dd in daemons:
-            # orphan?
-            spec = self.mgr.spec_store.active_specs.get(dd.service_name(), None)
-            assert dd.hostname is not None
-            assert dd.daemon_type is not None
-            assert dd.daemon_id is not None
-            if not spec and dd.daemon_type not in ['mon', 'mgr', 'osd']:
-                # (mon and mgr specs should always exist; osds aren't matched
-                # to a service spec)
-                self.log.info('Removing orphan daemon %s...' % dd.name())
-                self._remove_daemon(dd.name(), dd.hostname)
+            try:
+                self.log.info(dd.name())
+                # orphan?
+                spec = self.mgr.spec_store.active_specs.get(dd.service_name(), None)
+                if spec:
+                    self.log.info(spec)
+                assert dd.hostname is not None
+                assert dd.daemon_type is not None
+                assert dd.daemon_id is not None
+                if not spec and dd.daemon_type not in ['mon', 'mgr', 'osd']:
+                    # (mon and mgr specs should always exist; osds aren't matched
+                    # to a service spec)
+                    self.log.info('Removing orphan daemon %s...' % dd.name())
+                    self._remove_daemon(dd.name(), dd.hostname)
 
-            # ignore unmanaged services
-            if spec and spec.unmanaged:
-                continue
-
-            # ignore daemons for deleted services
-            if dd.service_name() in self.mgr.spec_store.spec_deleted:
-                continue
-
-            if dd.daemon_type == 'agent':
-                try:
-                    assert self.mgr.cherrypy_thread
-                    assert self.mgr.cherrypy_thread.ssl_certs.get_root_cert()
-                except Exception:
-                    self.log.info(
-                        f'Delaying checking {dd.name()} until cephadm endpoint finished creating root cert')
+                # ignore unmanaged services
+                if spec and spec.unmanaged:
                     continue
 
-            # These daemon types require additional configs after creation
-            if dd.daemon_type in REQUIRES_POST_ACTIONS:
-                daemons_post[dd.daemon_type].append(dd)
+                # ignore daemons for deleted services
+                if dd.service_name() in self.mgr.spec_store.spec_deleted:
+                    continue
 
-            if self.mgr.cephadm_services[daemon_type_to_service(dd.daemon_type)].get_active_daemon(
-               self.mgr.cache.get_daemons_by_service(dd.service_name())).daemon_id == dd.daemon_id:
-                dd.is_active = True
-            else:
-                dd.is_active = False
+                if dd.daemon_type == 'agent':
+                    try:
+                        assert self.mgr.cherrypy_thread
+                        assert self.mgr.cherrypy_thread.ssl_certs.get_root_cert()
+                    except Exception:
+                        self.log.info(
+                            f'Delaying checking {dd.name()} until cephadm endpoint finished creating root cert')
+                        continue
 
-            deps = self.mgr._calc_daemon_deps(spec, dd.daemon_type, dd.daemon_id)
-            last_deps, last_config = self.mgr.cache.get_daemon_last_config_deps(
-                dd.hostname, dd.name())
-            if last_deps is None:
-                last_deps = []
-            action = self.mgr.cache.get_scheduled_daemon_action(dd.hostname, dd.name())
-            if not last_config:
-                self.log.info('Reconfiguring %s (unknown last config time)...' % (
-                    dd.name()))
-                action = 'reconfig'
-            elif last_deps != deps:
-                self.log.debug('%s deps %s -> %s' % (dd.name(), last_deps,
-                                                     deps))
-                self.log.info('Reconfiguring %s (dependencies changed)...' % (
-                    dd.name()))
-                action = 'reconfig'
-            elif self.mgr.last_monmap and \
-                    self.mgr.last_monmap > last_config and \
-                    dd.daemon_type in CEPH_TYPES:
-                self.log.info('Reconfiguring %s (monmap changed)...' % dd.name())
-                action = 'reconfig'
-            elif self.mgr.extra_ceph_conf_is_newer(last_config) and \
-                    dd.daemon_type in CEPH_TYPES:
-                self.log.info('Reconfiguring %s (extra config changed)...' % dd.name())
-                action = 'reconfig'
-            if action:
-                if self.mgr.cache.get_scheduled_daemon_action(dd.hostname, dd.name()) == 'redeploy' \
-                        and action == 'reconfig':
-                    action = 'redeploy'
-                try:
-                    daemon_spec = CephadmDaemonDeploySpec.from_daemon_description(dd)
-                    self.mgr._daemon_action(daemon_spec, action=action)
-                    self.mgr.cache.rm_scheduled_daemon_action(dd.hostname, dd.name())
-                except OrchestratorError as e:
-                    self.mgr.events.from_orch_error(e)
-                    if dd.daemon_type in daemons_post:
-                        del daemons_post[dd.daemon_type]
-                    # continue...
-                except Exception as e:
-                    self.mgr.events.for_daemon_from_exception(dd.name(), e)
-                    if dd.daemon_type in daemons_post:
-                        del daemons_post[dd.daemon_type]
-                    # continue...
+                # These daemon types require additional configs after creation
+                if dd.daemon_type in REQUIRES_POST_ACTIONS:
+                    daemons_post[dd.daemon_type].append(dd)
+
+                if self.mgr.cephadm_services[daemon_type_to_service(dd.daemon_type)].get_active_daemon(
+                   self.mgr.cache.get_daemons_by_service(dd.service_name())).daemon_id == dd.daemon_id:
+                    dd.is_active = True
+                else:
+                    dd.is_active = False
+
+                deps = self.mgr._calc_daemon_deps(spec, dd.daemon_type, dd.daemon_id)
+                last_deps, last_config = self.mgr.cache.get_daemon_last_config_deps(
+                    dd.hostname, dd.name())
+                if last_deps is None:
+                    last_deps = []
+                action = self.mgr.cache.get_scheduled_daemon_action(dd.hostname, dd.name())
+                if not last_config:
+                    self.log.info('Reconfiguring %s (unknown last config time)...' % (
+                        dd.name()))
+                    action = 'reconfig'
+                elif last_deps != deps:
+                    self.log.debug('%s deps %s -> %s' % (dd.name(), last_deps,
+                                                         deps))
+                    self.log.info('Reconfiguring %s (dependencies changed)...' % (
+                        dd.name()))
+                    action = 'reconfig'
+                elif self.mgr.last_monmap and \
+                        self.mgr.last_monmap > last_config and \
+                        dd.daemon_type in CEPH_TYPES:
+                    self.log.info('Reconfiguring %s (monmap changed)...' % dd.name())
+                    action = 'reconfig'
+                elif self.mgr.extra_ceph_conf_is_newer(last_config) and \
+                        dd.daemon_type in CEPH_TYPES:
+                    self.log.info('Reconfiguring %s (extra config changed)...' % dd.name())
+                    action = 'reconfig'
+                if action:
+                    if self.mgr.cache.get_scheduled_daemon_action(dd.hostname, dd.name()) == 'redeploy' \
+                            and action == 'reconfig':
+                        action = 'redeploy'
+                    try:
+                        daemon_spec = CephadmDaemonDeploySpec.from_daemon_description(dd)
+                        self.mgr._daemon_action(daemon_spec, action=action)
+                        self.mgr.cache.rm_scheduled_daemon_action(dd.hostname, dd.name())
+                    except OrchestratorError as e:
+                        self.mgr.events.from_orch_error(e)
+                        if dd.daemon_type in daemons_post:
+                            del daemons_post[dd.daemon_type]
+                        # continue...
+                    except Exception as e:
+                        self.mgr.events.for_daemon_from_exception(dd.name(), e)
+                        if dd.daemon_type in daemons_post:
+                            del daemons_post[dd.daemon_type]
+                        # continue...
+            except Exception as e:
+                errors.append(str(e))
+
+        if errors:
+            error_str = ('\n').join(errors)
+            self.log.error(f'Errors Checking Daemons: {error_str}')
 
         # do daemon post actions
         for daemon_type, daemon_descs in daemons_post.items():
@@ -1000,12 +1012,17 @@ class CephadmServe:
 
     def _purge_deleted_services(self) -> None:
         existing_services = self.mgr.spec_store.all_specs.items()
+        logger.info(existing_services)
         for service_name, spec in list(existing_services):
+            logger.info(spec)
             if service_name not in self.mgr.spec_store.spec_deleted:
+                logger.info('Not Deleted')
                 continue
             if self.mgr.cache.get_daemons_by_service(service_name):
+                logger.info('Daemon(s) Remaining')
                 continue
             if spec.service_type in ['mon', 'mgr']:
+                logger.info('Cannot Delete Mon or Mgr')
                 continue
 
             logger.info(f'Purge service {service_name}')
