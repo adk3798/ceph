@@ -1,0 +1,60 @@
+#!/usr/bin/python3
+
+import os
+import subprocess
+
+
+def main():
+    kcli_podman = r"""
+ podman run --net host -it --rm --security-opt label=disable
+ -v $HOME/.ssh:/root/.ssh -v $HOME/.kcli:/root/.kcli
+ -v /var/lib/libvirt/images:/var/lib/libvirt/images
+ -v /var/run/libvirt:/var/run/libvirt -v $PWD:/workdir
+ -v /var/tmp:/ignitiondir quay.io/karmab/kcli:2543a61
+    """
+
+    kcli_docker = r"""
+ docker run --net host -it --rm --security-opt label=disable
+ -v $HOME/.ssh:/root/.ssh -v $HOME/.kcli:/root/.kcli
+ -v /var/lib/libvirt/images:/var/lib/libvirt/images
+ -v /var/run/libvirt:/var/run/libvirt -v $PWD:/workdir
+ -v /var/tmp:/ignitiondir quay.io/karmab/kcli:2543a61
+    """
+
+    engine = ''
+    for engine_name in ['docker', 'podman']:
+        proc = subprocess.run(f'which {engine_name}'.split(' '), capture_output=True, text=True, timeout=300)
+        if not proc.returncode:
+            engine = engine_name
+            break
+    if not engine:
+        raise Exception(('Could not find valid container engine (podman, docker). '
+                        + 'Please install a container engine before running.'))
+
+    kcli_cmd = kcli_docker if engine == 'docker' else kcli_podman
+    kcli_cmd = kcli_cmd.replace("$HOME", os.getenv("HOME"))
+    kcli_cmd = kcli_cmd.replace("$PWD", os.getenv("PWD"))
+    kcli_cmd = kcli_cmd.replace("\n", "").split(' ')
+    
+    kcli_cmd = [s.strip() for s in kcli_cmd if s]
+
+    if not os.path.exists(os.path.join(str(os.getenv("HOME")), '.kcli')):
+        os.mkdir(kcli_plans_dir_path)
+
+    proc = subprocess.run(kcli_cmd + 'create pool -p /var/lib/libvirt/images default'.split(' '), capture_output=True, text=True, timeout=300)
+    if proc.returncode:
+        raise Exception(f'Error creating default pool: {proc.stderr}')
+    else:
+        print('Succesfully created default pool')
+        cmd = f'sudo setfacl -m u:{os.getlogin()}:rwx /var/lib/libvirt/images'
+        proc = subprocess.run(cmd.split(' '), capture_output=True, text=True, timeout=300)
+        if proc.returncode:
+            raise Exception(f'Error setting access control list for default pool\nCommand "{cmd}" failed: {proc.stderr}')
+    proc = subprocess.run(kcli_cmd + 'create network -c 192.168.122.0/24 default'.split(' '), capture_output=True, text=True, timeout=300)
+    if proc.returncode:
+        raise Exception(f'Error creating default network: {proc.stderr}')
+    else:
+        print('Successfully created default network')
+
+if __name__ == '__main__':
+    main()
