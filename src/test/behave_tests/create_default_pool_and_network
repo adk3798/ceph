@@ -39,7 +39,7 @@ def main():
     kcli_cmd = [s.strip() for s in kcli_cmd if s]
 
     if not os.path.exists(os.path.join(str(os.getenv("HOME")), '.kcli')):
-        os.mkdir(kcli_plans_dir_path)
+        os.mkdir(os.path.join(str(os.getenv("HOME")), '.kcli'))
 
     proc = subprocess.run(kcli_cmd + 'create pool -p /var/lib/libvirt/images default'.split(' '), capture_output=True, text=True, timeout=300)
     if proc.returncode:
