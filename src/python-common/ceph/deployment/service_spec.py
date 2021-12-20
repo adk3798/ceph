@@ -505,6 +505,7 @@ class ServiceSpec(object):
                  unmanaged: bool = False,
                  preview_only: bool = False,
                  networks: Optional[List[str]] = None,
+                 extra_container_args: Optional[Dict[str, str]] = None,
                  ):
 
         #: See :ref:`orchestrator-cli-placement-spec`.
@@ -542,6 +543,10 @@ class ServiceSpec(object):
         self.config: Optional[Dict[str, str]] = None
         if config:
             self.config = {k.replace(' ', '_'): v for k, v in config.items()}
+
+        self.extra_container_args: Optional[Dict[str, str]] = None
+        if extra_container_args:
+            self.extra_container_args = {str(k): str(v) for k, v in extra_container_args.items()}
 
     @classmethod
     @handle_type_error
@@ -665,6 +670,8 @@ class ServiceSpec(object):
             ret['unmanaged'] = self.unmanaged
         if self.networks:
             ret['networks'] = self.networks
+        if self.extra_container_args:
+            ret['extra_container_args'] = self.extra_container_args
 
         c = {}
         for key, val in sorted(self.__dict__.items(), key=lambda tpl: tpl[0]):
@@ -709,6 +716,16 @@ class ServiceSpec(object):
                 raise SpecValidationError(
                     f'Cannot parse network {network}: {e}'
                 )
+
+        if self.extra_container_args:
+            for k, v in self.extra_container_args.items():
+                try:
+                    str(k)
+                    str(v)
+                except (ValueError, TypeError):
+                    raise SpecValidationError(
+                        f'Container cli args option {k}: {v} has object that cannot be converted to a string'
+                    )
 
     def __repr__(self) -> str:
         y = yaml.dump(cast(dict, self), default_flow_style=False)
