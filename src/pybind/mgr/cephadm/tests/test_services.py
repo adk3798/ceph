@@ -763,7 +763,6 @@ class TestIngressService:
                                 'stats uri /stats\n    '
                                 'stats refresh 10s\n    '
                                 'stats auth admin:12345\n    '
-                                'http-request use-service prometheus-exporter if { path /metrics }\n    '
                                 'monitor-uri /health\n'
                                 '\nfrontend frontend\n    '
                                 'bind 1.2.3.4:8089\n    '
