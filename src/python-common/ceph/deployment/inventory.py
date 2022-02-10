@@ -3,7 +3,8 @@ try:
 except ImportError:
     pass  # for type checking
 
-from ceph.utils import datetime_now
+from ceph.utils import datetime_now, datetime_to_str, str_to_datetime
+import datetime
 import json
 
 
@@ -17,7 +18,14 @@ class Devices(object):
         self.devices = devices  # type: List[Device]
 
     def __eq__(self, other: Any) -> bool:
-        return self.to_json() == other.to_json()
+        if len(self.devices) != len(other.devices):
+            return False
+        for d1, d2 in zip(self.to_json(), other.to_json()):
+            if [k for k in d1.keys() if k != 'created'] != [k for k in d2.keys() if k != 'created']:
+                return False
+            if [k for k in d1.keys() if d1[k] != d2[k] and k != 'created']:
+                return False
+        return True
 
     def to_json(self):
         # type: () -> List[dict]
@@ -43,6 +51,7 @@ class Device(object):
         'human_readable_type',
         'device_id',
         'lsm_data',
+        'created',
     ]
 
     def __init__(self,
@@ -53,7 +62,7 @@ class Device(object):
                  lvs=None,  # type: Optional[List[str]]
                  device_id=None,  # type: Optional[str]
                  lsm_data=None,  # type: Optional[Dict[str, Dict[str, str]]]
-                 created=None # type Optional[datetime.datetime]
+                 created=None  # type: Optional[datetime.datetime]
                  ):
         self.path = path
         self.sys_api = sys_api if sys_api is not None else {}  # type: Dict[str, Any]
@@ -62,12 +71,15 @@ class Device(object):
         self.lvs = lvs
         self.device_id = device_id
         self.lsm_data = lsm_data if lsm_data is not None else {}  # type: Dict[str, Dict[str, str]]
-        self.created = datetime_now()
+        self.created = created if created is not None else datetime_now()
 
     def to_json(self):
         # type: () -> dict
         return {
-            k: getattr(self, k) for k in self.report_fields
+            k: (getattr(self, k) if k != 'created'
+                or not isinstance(getattr(self, k), datetime.datetime)
+                else datetime_to_str(getattr(self, k)))
+            for k in self.report_fields
         }
 
     @classmethod
@@ -75,9 +87,12 @@ class Device(object):
         # type: (Dict[str, Any]) -> Device
         if not isinstance(input, dict):
             raise ValueError('Device: Expected dict. Got `{}...`'.format(json.dumps(input)[:10]))
+
         ret = cls(
             **{
-                key: input.get(key, None)
+                key: (input.get(key, None) if key != 'created'
+                      or not input.get(key, None)
+                      else str_to_datetime(input.get(key, None)))
                 for key in Device.report_fields
                 if key != 'human_readable_type'
             }
