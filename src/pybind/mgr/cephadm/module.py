@@ -24,7 +24,7 @@ from ceph.deployment import inventory
 from ceph.deployment.drive_group import DriveGroupSpec
 from ceph.deployment.service_spec import \
     ServiceSpec, PlacementSpec, \
-    HostPlacementSpec, IngressSpec
+    HostPlacementSpec, IngressSpec, MonitoringSpec
 from ceph.utils import str_to_datetime, datetime_to_str, datetime_now
 from cephadm.serve import CephadmServe
 from cephadm.services.cephadmservice import CephadmDaemonDeploySpec
@@ -2472,6 +2472,13 @@ Then run the following:
         if spec.placement.count_per_host is not None and spec.placement.count_per_host > max_count and spec.service_type != 'osd':
             raise OrchestratorError((f'The maximum count_per_host allowed is {max_count}.'
                                      + ' This limit can be adjusted by changing the mgr/cephadm/max_count_per_host config option'))
+
+        # prometheus is special case, we need to check prometheus module option for port
+        if spec.service_type == 'prometheus':
+            assert isinstance(spec, MonitoringSpec)  # for mypy, should always pass
+            port = self._ceph_get_module_option('prometheus', 'server_port')
+            if isinstance(port, int):  # also for mypy
+                spec.port = port
 
         HostAssignment(
             spec=spec,
