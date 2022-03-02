@@ -235,6 +235,7 @@ class PrometheusService(CephadmService):
     ) -> CephadmDaemonDeploySpec:
         assert self.TYPE == daemon_spec.daemon_type
         daemon_spec.final_config, daemon_spec.deps = self.generate_config(daemon_spec)
+        daemon_spec.ports = [self.mgr._ceph_get_module_option('prometheus', 'server_port')]
         return daemon_spec
 
     def generate_config(

@@ -2474,11 +2474,11 @@ Then run the following:
                                      + ' This limit can be adjusted by changing the mgr/cephadm/max_count_per_host config option'))
 
         # prometheus is special case, we need to check prometheus module option for port
+        self.log.error(spec.service_type)
         if spec.service_type == 'prometheus':
-            assert isinstance(spec, MonitoringSpec)  # for mypy, should always pass
-            port = self._ceph_get_module_option('prometheus', 'server_port')
-            if isinstance(port, int):  # also for mypy
-                spec.port = port
+            self.log.error(self._ceph_get_module_option('prometheus', 'server_port'))
+            self.port = self._ceph_get_module_option('prometheus', 'server_port')
+            self.log.error(self.port)
 
         HostAssignment(
             spec=spec,
