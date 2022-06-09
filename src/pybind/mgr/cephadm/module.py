@@ -314,7 +314,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
             type='int',
             default=None,
             desc='internal - do not modify',
-            # used to track track spec and other data migrations.
+            # used to track spec and other data migrations.
         ),
         Option(
             'config_dashboard',
