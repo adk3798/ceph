@@ -1571,7 +1571,7 @@ class OrchestratorClientMixin(Orchestrator):
 
     >>> import mgr_module
     >>> #doctest: +SKIP
-    ... class MyImplentation(mgr_module.MgrModule, Orchestrator):
+    ... class MyImplementation(mgr_module.MgrModule, Orchestrator):
     ...     def __init__(self, ...):
     ...         self.orch_client = OrchestratorClientMixin()
     ...         self.orch_client.set_mgr(self.mgr))
