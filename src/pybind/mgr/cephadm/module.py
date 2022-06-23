@@ -2549,7 +2549,7 @@ Then run the following:
         """
         Deprecated. Please use `apply()` instead.
 
-        Keeping this around to be compapatible to mgr/dashboard
+        Keeping this around to be compatible to mgr/dashboard
         """
         return [self._apply(spec) for spec in specs]
 
