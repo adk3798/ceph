@@ -438,7 +438,7 @@ class SNMPGateway:
 
     @staticmethod
     def get_version(ctx: CephadmContext, fsid: str, daemon_id: str) -> Optional[str]:
-        """Return the version of the notifer from it's http endpoint"""
+        """Return the version of the notifier from it's http endpoint"""
         path = os.path.join(ctx.data_dir, fsid, f'snmp-gateway.{daemon_id}', 'unit.meta')
         try:
             with open(path, 'r') as env:
