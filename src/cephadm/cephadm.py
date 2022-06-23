@@ -2197,7 +2197,7 @@ def infer_config(func: FuncT) -> FuncT:
         if 'fsid' in ctx and ctx.fsid:
             name = ctx.name if ('name' in ctx and ctx.name) else get_mon_daemon_name(ctx.fsid)
             if name is not None:
-                # daemon name has been specified (or inffered from mon), let's use its conf
+                # daemon name has been specified (or inferred from mon), let's use its conf
                 ctx.config = config_path(name.split('.', 1)[0], name.split('.', 1)[1])
             else:
                 # no daemon, in case the cluster has a config dir then use it
