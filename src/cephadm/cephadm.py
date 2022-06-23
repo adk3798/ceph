@@ -2162,7 +2162,7 @@ def infer_fsid(func: FuncT) -> FuncT:
 
 def infer_config(func: FuncT) -> FuncT:
     """
-    Infer the clusater configuration using the followign priority order:
+    Infer the cluster configuration using the followign priority order:
      1- if the user has provided custom conf file (-c option) use it
      2- otherwise if daemon --name has been provided use daemon conf
      3- otherwise find the mon daemon conf file and use it (if v1)
@@ -5174,9 +5174,9 @@ def prepare_cluster_network(ctx: CephadmContext) -> Tuple[str, bool]:
         cluster_network = cp.get('global', 'cluster_network').strip('"').strip("'")
 
     if cluster_network:
-        cluser_nets = set([x.strip() for x in cluster_network.split(',')])
+        cluster_nets = set([x.strip() for x in cluster_network.split(',')])
         local_subnets = set([x[0] for x in list_networks(ctx).items()])
-        for net in cluser_nets:
+        for net in cluster_nets:
             if net not in local_subnets:
                 logger.warning(f'The cluster CIDR network {net} is not configured locally.')
 
