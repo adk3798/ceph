@@ -8314,7 +8314,7 @@ def command_add_repo(ctx: CephadmContext) -> None:
         except Exception:
             raise Error('version must be in the form x.y.z (e.g., 15.2.0)')
     if ctx.release:
-        # Pacific =/= pacific in this case, set to undercase to avoid confision
+        # Pacific =/= pacific in this case, set to undercase to avoid confusion
         ctx.release = ctx.release.lower()
 
     pkg = create_packager(ctx, stable=ctx.release,
