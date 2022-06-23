@@ -5018,7 +5018,7 @@ def parse_mon_addrv(addrv_arg: str) -> List[EndPoint]:
     addrv_args = []
     addr_arg = addrv_arg
     if addr_arg[0] != '[' or addr_arg[-1] != ']':
-        raise Error(f'--mon-addrv value {addr_arg} must use square backets')
+        raise Error(f'--mon-addrv value {addr_arg} must use square brackets')
 
     for addr in addr_arg[1: -1].split(','):
         hasport = r.findall(addr)
