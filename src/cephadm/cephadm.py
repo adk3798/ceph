@@ -7987,14 +7987,14 @@ class Apt(Packager):
     def kubic_repo_path(self) -> str:
         return '/etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list'
 
-    def kubric_repo_gpgkey_url(self) -> str:
+    def kubic_repo_gpgkey_url(self) -> str:
         return '%s/Release.key' % self.kubic_repo_url()
 
-    def kubric_repo_gpgkey_path(self) -> str:
+    def kubic_repo_gpgkey_path(self) -> str:
         return '/etc/apt/trusted.gpg.d/kubic.release.gpg'
 
     def add_kubic_repo(self) -> None:
-        url = self.kubric_repo_gpgkey_url()
+        url = self.kubic_repo_gpgkey_url()
         logger.info('Installing repo GPG key from %s...' % url)
         try:
             response = urlopen(url)
@@ -8004,7 +8004,7 @@ class Apt(Packager):
             raise Error('failed to fetch GPG key')
         key = response.read().decode('utf-8')
         tmp_key = write_tmp(key, 0, 0)
-        keyring = self.kubric_repo_gpgkey_path()
+        keyring = self.kubic_repo_gpgkey_path()
         call_throws(self.ctx, ['apt-key', '--keyring', keyring, 'add', tmp_key.name])
 
         logger.info('Installing repo file at %s...' % self.kubic_repo_path())
@@ -8013,7 +8013,7 @@ class Apt(Packager):
             f.write(content)
 
     def rm_kubic_repo(self) -> None:
-        keyring = self.kubric_repo_gpgkey_path()
+        keyring = self.kubic_repo_gpgkey_path()
         if os.path.exists(keyring):
             logger.info('Removing repo GPG key %s...' % keyring)
             os.unlink(keyring)
