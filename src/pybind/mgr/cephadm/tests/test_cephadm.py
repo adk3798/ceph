@@ -686,7 +686,7 @@ class TestCephadm(object):
                         CephadmServe(cephadm_module)._check_daemons()
                         _cfg_db.assert_called_once_with([tempdd2])
 
-                        # post actions still has the other daemon in it and will run next _check_deamons
+                        # post actions still has the other daemon in it and will run next _check_daemons
                         assert len(cephadm_module.requires_post_actions) == 1
 
                         # post actions was missed for a daemon
