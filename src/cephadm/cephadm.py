@@ -8611,7 +8611,7 @@ class HostFacts():
             if os.path.exists(enc_path):
                 enc_dirs = glob(os.path.join(enc_path, '*'))
                 if len(enc_dirs) != 1:
-                    # incomplete enclosure spec - expecting ONE dir in the fomrat
+                    # incomplete enclosure spec - expecting ONE dir in the format
                     # host(adapter):bus:target:lun e.g. 16:0:0:0
                     continue
                 enc_path = enc_dirs[0]
