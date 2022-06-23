@@ -187,7 +187,7 @@ class SizeMatcher(Matcher):
         # type: (str, str) -> None
 
         # The 'key' value is overwritten here because
-        # the user_defined attribute does not neccessarily
+        # the user_defined attribute does not necessarily
         # correspond to the desired attribute
         # requested from the inventory output
         Matcher.__init__(self, key, value)
@@ -372,7 +372,7 @@ class SizeMatcher(Matcher):
         if not disk:
             return False
         disk_value = self._get_disk_key(disk)
-        # This doesn't neccessarily have to be a float.
+        # This doesn't necessarily have to be a float.
         # The current output from ceph-volume gives a float..
         # This may change in the future..
         # todo: harden this paragraph
