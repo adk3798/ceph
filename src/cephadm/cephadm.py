@@ -9436,7 +9436,7 @@ def _get_parser():
     parser_adopt.add_argument(
         '--force-start',
         action='store_true',
-        help='start newly adoped daemon, even if it was not running previously')
+        help='start newly adopted daemon, even if it was not running previously')
     parser_adopt.add_argument(
         '--container-init',
         action='store_true',
