@@ -1883,7 +1883,7 @@ Then run the following:
     def exit_host_maintenance(self, hostname: str) -> str:
         """Exit maintenance mode and return a host to an operational state
 
-        Returning from maintnenance will enable the clusters systemd target and
+        Returning from maintenance will enable the clusters systemd target and
         start it, and remove any noout that has been added for the host if the
         host has osd daemons
 
