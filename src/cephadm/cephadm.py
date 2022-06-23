@@ -9221,7 +9221,7 @@ class HostFacts():
 
 
 def command_gather_facts(ctx: CephadmContext) -> None:
-    """gather_facts is intended to provide host releated metadata to the caller"""
+    """gather_facts is intended to provide host related metadata to the caller"""
     host = HostFacts(ctx)
     print(host.dump())
 
