@@ -66,7 +66,7 @@ tasks:
       # verify only one version found for mgrs and that their version hash matches what we are upgrading to
       - ceph versions | jq -e '.mgr | length == 1'
       - ceph versions | jq -e '.mgr | keys' | grep $sha1
-      # verify overall we still se two versions, basically to make sure --daemon-types wans't ignored and all daemons upgraded
+      # verify overall we still se two versions, basically to make sure --daemon-types wasn't ignored and all daemons upgraded
       - ceph versions | jq -e '.overall | length == 2'
       # check that exactly two daemons have been upgraded to the new image (our 2 mgr daemons)
       - ceph orch upgrade check quay.ceph.io/ceph-ci/ceph:$sha1 | jq -e '.up_to_date | length == 2'
