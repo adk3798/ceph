@@ -976,7 +976,7 @@ class TestCephadm(object):
             c = cephadm_module.create_osds(dg)
             out = wait(cephadm_module, c)
             assert out == "Created no osd(s) on host test; already created?"
-            bad_dg = DriveGroupSpec(placement=PlacementSpec(host_pattern='invalid_hsot'),
+            bad_dg = DriveGroupSpec(placement=PlacementSpec(host_pattern='invalid_host'),
                                     data_devices=DeviceSelection(paths=['']))
             c = cephadm_module.create_osds(bad_dg)
             out = wait(cephadm_module, c)
