@@ -696,7 +696,7 @@ class CephadmConfigChecks:
         self.active_checks = []
         self.skipped_checks = []
 
-        # process all healthchecks that are not explcitly disabled
+        # process all healthchecks that are not explicitly disabled
         for health_check in self.health_checks:
             if check_config.get(health_check.name, '') != 'disabled':
                 self.active_checks.append(health_check.name)

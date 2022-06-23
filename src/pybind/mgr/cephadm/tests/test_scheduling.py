@@ -288,7 +288,7 @@ def test_explicit_scheduler(host_key, hosts,
 # * where e=[], *=any
 #
 #       + list of known hosts available for scheduling (host_key)
-#       |   + hosts used for explict placement (explicit_key)
+#       |   + hosts used for explicit placement (explicit_key)
 #       |   |   + count
 #       |   |   | + existing daemons
 #       |   |   | |     + section (host, label, pattern)
