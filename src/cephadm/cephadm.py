@@ -8597,7 +8597,7 @@ class HostFacts():
 
         Enclosures are detected by walking the scsi generic sysfs hierarchy.
         Any device tree that holds an 'enclosure' subdirectory is interpreted as
-        an enclosure. Once identified the enclosire directory is analysis to
+        an enclosure. Once identified the enclosure directory is analysis to
         identify key descriptors that will help relate disks to enclosures and
         disks to enclosure slots.
 
