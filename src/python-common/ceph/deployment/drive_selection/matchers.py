@@ -388,7 +388,7 @@ class SizeMatcher(Matcher):
             if disk_size_in_byte <= self.to_byte(
                     self.high) and disk_size_in_byte >= self.to_byte(self.low):
                 return True
-            # is a else: return False neccessary here?
+            # is a else: return False necessary here?
             # (and in all other branches)
             logger.debug("Disk didn't match for 'high/low' filter")
 
