@@ -1593,7 +1593,7 @@ class FileLock(object):
     def release(self, force: bool = False) -> None:
         """
         Releases the file lock.
-        Please note, that the lock is only completly released, if the lock
+        Please note, that the lock is only completely released, if the lock
         counter is 0.
         Also note, that the lock file itself is not automatically deleted.
         :arg bool force:
