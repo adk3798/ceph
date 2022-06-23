@@ -614,7 +614,7 @@ class NodeAssignmentTest(NamedTuple):
              'rgw:host1(*:81)', 'rgw:host2(*:81)', 'rgw:host3(*:81)'],
             []
         ),
-        # label + count_per_host + ports (+ xisting)
+        # label + count_per_host + ports (+ existing)
         NodeAssignmentTest(
             'rgw',
             PlacementSpec(count=6, label='foo'),
