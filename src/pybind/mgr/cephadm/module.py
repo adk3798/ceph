@@ -626,7 +626,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
 
         self.migration = Migrations(self)
 
-        _service_clses: Sequence[Type[CephadmService]] = [
+        _service_classes: Sequence[Type[CephadmService]] = [
             OSDService, NFSService, MonService, MgrService, MdsService,
             RgwService, RbdMirrorService, GrafanaService, AlertmanagerService,
             PrometheusService, NodeExporterService, LokiService, PromtailService, CrashService, IscsiService,
@@ -637,7 +637,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
 
         # https://github.com/python/mypy/issues/8993
         self.cephadm_services: Dict[str, CephadmService] = {
-            cls.TYPE: cls(self) for cls in _service_clses}  # type: ignore
+            cls.TYPE: cls(self) for cls in _service_classes}  # type: ignore
 
         self.mgr_service: MgrService = cast(MgrService, self.cephadm_services['mgr'])
         self.osd_service: OSDService = cast(OSDService, self.cephadm_services['osd'])
