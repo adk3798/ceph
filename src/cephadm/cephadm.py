@@ -2162,7 +2162,7 @@ def infer_fsid(func: FuncT) -> FuncT:
 
 def infer_config(func: FuncT) -> FuncT:
     """
-    Infer the cluster configuration using the followign priority order:
+    Infer the cluster configuration using the following priority order:
      1- if the user has provided custom conf file (-c option) use it
      2- otherwise if daemon --name has been provided use daemon conf
      3- otherwise find the mon daemon conf file and use it (if v1)
