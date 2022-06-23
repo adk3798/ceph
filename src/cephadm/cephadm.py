@@ -9858,7 +9858,7 @@ def _get_parser():
         '--extra-container-args',
         action='append',
         default=[],
-        help='Additional container arguments to apply to deamon'
+        help='Additional container arguments to apply to daemon'
     )
     parser_deploy.add_argument(
         '--extra-entrypoint-args',
