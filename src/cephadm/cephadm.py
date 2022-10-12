@@ -3035,7 +3035,8 @@ def get_ceph_volume_container(ctx: CephadmContext,
     if envs is None:
         envs = []
     envs.append('CEPH_VOLUME_SKIP_RESTORECON=yes')
-    envs.append('CEPH_VOLUME_DEBUG=1')
+    if 'ceph_volume_debug' in ctx and ctx.ceph_volume_debug:
+        envs.append('CEPH_VOLUME_DEBUG=1')
 
     return CephContainer(
         ctx,
@@ -9311,6 +9312,10 @@ def _get_parser():
     parser_ceph_volume.add_argument(
         '--keyring', '-k',
         help='ceph.keyring to pass through to the container')
+    parser_ceph_volume.add_argument(
+        '--ceph-volume-debug',
+        action='store_true',
+        help='pass CEPH_VOLUME_DEBUG=1 to ceph-volume commands')
     parser_ceph_volume.add_argument(
         'command', nargs=argparse.REMAINDER,
         help='command')

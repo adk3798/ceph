@@ -435,6 +435,12 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
             default=True,
             desc='Pass --cgroups=split when cephadm creates containers (currently podman only)'
         ),
+        Option(
+            'ceph_volume_debug',
+            type='bool',
+            default=False,
+            desc='pass CEPH_VOLUME_DEBUG=1 to ceph-volume commands called by cephadm',
+        ),
     ]
 
     def __init__(self, *args: Any, **kwargs: Any):
@@ -511,6 +517,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
             self.max_osd_draining_count = 10
             self.device_enhanced_scan = False
             self.cgroups_split = True
+            self.ceph_volume_debug = False
 
         self.notify(NotifyType.mon_map, None)
         self.config_notify()

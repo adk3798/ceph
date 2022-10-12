@@ -371,6 +371,7 @@ class CephadmServe:
         inventory_args = ['--', 'inventory',
                           '--format=json-pretty',
                           '--filter-for-batch']
+
         if with_lsm:
             inventory_args.insert(-1, "--with-lsm")
 
@@ -1333,6 +1334,14 @@ class CephadmServe:
         """
 
         await self.mgr.ssh._remote_connection(host, addr)
+
+        if command == 'ceph-volume' and self.mgr.ceph_volume_debug:
+            # note: this is explicitly being added to args rather than
+            # final_args as it is specific to cephadm ceph-volume commands
+            # rather than a global arg. Additionally, it must be added to
+            # the front of the args list as we want it before the "--" used
+            # to specify the actual ceph-volume command to be run
+            args.insert(0, '--ceph-volume-debug')
 
         self.log.debug(f"_run_cephadm : command = {command}")
         self.log.debug(f"_run_cephadm : args = {args}")
