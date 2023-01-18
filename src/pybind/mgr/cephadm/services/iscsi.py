@@ -159,14 +159,14 @@ class IscsiService(CephService):
         Called after the daemon is removed.
         """
         logger.debug(f'Post remove daemon {self.TYPE}.{daemon.daemon_id}')
-
-        # remove config for dashboard iscsi gateways
-        ret, out, err = self.mgr.mon_command({
-            'prefix': 'dashboard iscsi-gateway-rm',
-            'name': daemon.hostname,
-        })
-        if not ret:
-            logger.info(f'{daemon.hostname} removed from iscsi gateways dashboard config')
+        try:
+            # remove config for dashboard iscsi gateways
+            self.mgr.fire_and_forget_mon_command({
+                'prefix': 'dashboard iscsi-gateway-rm',
+                'name': daemon.hostname,
+            })
+        except Exception as e:
+            logger.error(f'Failed to remove {daemon.hostname} from iscsi gateways dashboard config: {e}')
 
         # needed to know if we have ssl stuff for iscsi in ceph config
         iscsi_config_dict = {}

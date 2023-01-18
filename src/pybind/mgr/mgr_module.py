@@ -1619,6 +1619,14 @@ class MgrModule(ceph_module.BaseMgrModule, MgrModuleLoggingMixin):
 
         return r
 
+    def fire_and_forget_mon_command(self, cmd_dict: dict, inbuf: Optional[str] = None) -> None:
+        """
+        mon command that does not wait for the result and instead just returns
+        """
+
+        result = CommandResult()
+        self.send_command(result, "mon", "", json.dumps(cmd_dict), "", inbuf)
+
     def osd_command(self, cmd_dict: dict, inbuf: Optional[str] = None) -> Tuple[int, str, str]:
         """
         Helper for osd command execution.
