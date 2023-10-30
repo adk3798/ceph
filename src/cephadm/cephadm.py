@@ -59,7 +59,6 @@ from cephadmlib.constants import (
     CEPH_DEFAULT_PUBKEY,
     CEPH_KEYRING,
     CEPH_PUBKEY,
-    CGROUPS_SPLIT_PODMAN_VERSION,
     CONTAINER_INIT,
     CUSTOM_PS1,
     DATA_DIR,
@@ -2803,29 +2802,7 @@ def get_container(
             f'--env-file={sg.conf_file_path}'
         )
 
-    # if using podman, set -d, --conmon-pidfile & --cidfile flags
-    # so service can have Type=Forking
-    if isinstance(ctx.container_engine, Podman):
-        runtime_dir = '/run'
-        service_name = f'{ident.unit_name}.service'
-        container_args.extend([
-            '-d', '--log-driver', 'journald',
-            '--conmon-pidfile',
-            f'{runtime_dir}/{service_name}-pid',
-            '--cidfile',
-            f'{runtime_dir}/{service_name}-cid',
-        ])
-        if ctx.container_engine.version >= CGROUPS_SPLIT_PODMAN_VERSION and not ctx.no_cgroups_split:
-            container_args.append('--cgroups=split')
-        # if /etc/hosts doesn't exist, we can be confident
-        # users aren't using it for host name resolution
-        # and adding --no-hosts avoids bugs created in certain daemons
-        # by modifications podman makes to /etc/hosts
-        # https://tracker.ceph.com/issues/58532
-        # https://tracker.ceph.com/issues/57018
-        if not os.path.exists('/etc/hosts'):
-            container_args.extend(['--no-hosts'])
-
+    _update_container_args_for_podman(ctx, ident, container_args)
     return CephContainer.for_daemon(
         ctx,
         ident=ident,
@@ -2838,6 +2815,17 @@ def get_container(
         privileged=privileged,
         ptrace=ptrace,
         host_network=host_network,
+    )
+
+
+def _update_container_args_for_podman(
+    ctx: CephadmContext, ident: DaemonIdentity, container_args: List[str]
+) -> None:
+    if not isinstance(ctx.container_engine, Podman):
+        return
+    service_name = f'{ident.unit_name}.service'
+    container_args.extend(
+        ctx.container_engine.service_args(ctx, service_name)
     )
 
 
@@ -3402,18 +3390,13 @@ def install_base_units(ctx, fsid):
 def get_unit_file(ctx: CephadmContext, fsid: str) -> str:
     has_docker_engine = isinstance(ctx.container_engine, Docker)
     has_podman_engine = isinstance(ctx.container_engine, Podman)
-    has_podman_split_version = False
-    if has_podman_engine:
-        has_podman_split_version = (
-            ctx.container_engine.version >= CGROUPS_SPLIT_PODMAN_VERSION
-        )
     return templating.render(
         ctx,
         templating.Templates.ceph_service,
         fsid=fsid,
         has_docker_engine=has_docker_engine,
         has_podman_engine=has_podman_engine,
-        has_podman_split_version=has_podman_split_version,
+        has_podman_split_version=has_podman_engine and ctx.container_engine.supports_split_cgroups,
     )
 
 ##################################
