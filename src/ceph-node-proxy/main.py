@@ -2,9 +2,13 @@ from threading import Thread
 from redfishdellsystem import RedfishDellSystem
 from reporter import Reporter
 from util import Config, Logger, http_req
+from tempfile import NamedTemporaryFile
 from typing import Dict, Any, Optional
+
+import argparse
 import traceback
 import logging
+import os
 import ssl
 import json
 
@@ -174,12 +178,46 @@ class NodeProxy(Thread):
             self.log.logger.error("Can't initialize the reporter.")
             raise
 
-node_proxy_mgr = NodeProxyManager('10.10.10.11',
-                                  'agent.whatever',
-                                  'AQCzax1lY5H8FRAAMSj2xFsS3CFCBFsoIozqmg==',
-                                  7150)
-if not node_proxy_mgr.is_alive():
-    node_proxy_mgr.start()
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description='Ceph Node-Proxy for HW Monitoring',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument(
+        '--config',
+        help='path of config file in json format',
+        required=True
+    )
 
-# if node_proxy_mgr.is_alive():
-#     node_proxy_mgr.shutdown()
+    args = parser.parse_args()
+
+    if not os.path.exists(args.config):
+        raise Exception(f'No config file found at provided config path: {args.config}')
+
+    with open(args.config, 'r') as f:
+        try:
+            config_json = f.read()
+            config = json.loads(config_json)
+        except Exception as e:
+            raise Exception(f'Failed to load json config: {str(e)}')
+
+    target_ip = config['target_ip']
+    target_port = config['target_port']
+    keyring = config['keyring']
+    root_cert = config['root_cert.pem']
+    name = config['name']
+
+    f = NamedTemporaryFile(prefix='cephadm-endpoint-root-cert')
+    os.fchmod(f.fileno(), 0o600)
+    f.write(root_cert.encode('utf-8'))
+    f.flush()  # make visible to other processes
+
+    node_proxy_mgr = NodeProxyManager(mgr_host=target_ip,
+                                      cephx_name=name,
+                                      cephx_secret=keyring,
+                                      mgr_agent_port=target_port,
+                                      ca_path=f.name)
+    if not node_proxy_mgr.is_alive():
+        node_proxy_mgr.start()
+
+if __name__ == '__main__':
+    main()
