@@ -1,7 +1,7 @@
 import socket
-from .util import Config
+from util import Config
 from typing import Dict, Any
-from .baseclient import BaseClient
+from baseclient import BaseClient
 
 
 class BaseSystem:

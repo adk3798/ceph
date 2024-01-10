@@ -1,9 +1,9 @@
 import concurrent.futures
-from .basesystem import BaseSystem
-from .redfish_client import RedFishClient
+from basesystem import BaseSystem
+from redfish_client import RedFishClient
 from threading import Thread, Lock
 from time import sleep
-from .util import Logger, retry
+from util import Logger, retry
 from typing import Dict, Any, List
 
 

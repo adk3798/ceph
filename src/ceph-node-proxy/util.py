@@ -124,9 +124,12 @@ def http_req(hostname: str = '',
 
     url: str = f'{scheme}://{hostname}:{port}{endpoint}'
     _data = bytes(data, 'ascii') if data else None
+    _headers = headers
+    if not _headers.get('Content-Type') and method in ['POST', 'PATCH']:
+        _headers['Content-Type'] = 'application/json'
 
     try:
-        req = Request(url, _data, headers, method=method)
+        req = Request(url, _data, _headers, method=method)
         with urlopen(req, context=ssl_ctx, timeout=timeout) as response:
             response_str = response.read()
             response_headers = response.headers
