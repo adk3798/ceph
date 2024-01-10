@@ -2733,6 +2733,15 @@ Then run the following:
                 pass
             deps = sorted([self.get_mgr_ip(), server_port, root_cert,
                            str(self.device_enhanced_scan)])
+        elif daemon_type == 'node-proxy':
+            root_cert = ''
+            server_port = ''
+            try:
+                server_port = str(self.http_server.agent.server_port)
+                root_cert = self.http_server.agent.ssl_certs.get_root_cert()
+            except Exception:
+                pass
+            deps = sorted([self.get_mgr_ip(), server_port, root_cert])
         elif daemon_type == 'iscsi':
             if spec:
                 iscsi_spec = cast(IscsiServiceSpec, spec)
