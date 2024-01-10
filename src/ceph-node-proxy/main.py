@@ -63,6 +63,7 @@ class NodeProxyManager(Thread):
             }
         }
         status, result = http_req(hostname=self.mgr_host,
+                                  method='POST',
                                   port=self.mgr_agent_port,
                                   data=json.dumps(node_proxy_meta),
                                   endpoint='/node-proxy/oob',
