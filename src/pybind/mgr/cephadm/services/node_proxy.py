@@ -19,6 +19,7 @@ class NodeProxy(CephService):
 
         keyring = self.get_keyring_with_caps(self.get_auth_entity(daemon_id, host=host), [])
         daemon_spec.keyring = keyring
+        self.mgr.node_proxy.update_keyring(host, keyring)
 
         daemon_spec.final_config, daemon_spec.deps = self.generate_config(daemon_spec)
 

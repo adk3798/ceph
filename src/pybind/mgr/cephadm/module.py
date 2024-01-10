@@ -1630,13 +1630,12 @@ Then run the following:
                 spec.oob['addr'] = spec.hostname
             if not spec.oob.get('port'):
                 spec.oob['port'] = '443'
-            data = json.loads(self.get_store('node_proxy/oob', '{}'))
-            data[spec.hostname] = dict()
-            data[spec.hostname]['addr'] = spec.oob['addr']
-            data[spec.hostname]['port'] = spec.oob['port']
-            data[spec.hostname]['username'] = spec.oob['username']
-            data[spec.hostname]['password'] = spec.oob['password']
-            self.set_store('node_proxy/oob', json.dumps(data))
+            host_oob_info = dict()
+            host_oob_info['addr'] = spec.oob['addr']
+            host_oob_info['port'] = spec.oob['port']
+            host_oob_info['username'] = spec.oob['username']
+            host_oob_info['password'] = spec.oob['password']
+            self.node_proxy.update_oob(spec.hostname, host_oob_info)
 
         # prime crush map?
         if spec.location:
