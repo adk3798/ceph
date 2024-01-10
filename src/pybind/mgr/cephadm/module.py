@@ -444,6 +444,12 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
             desc='Multiplied by agent refresh rate to calculate how long agent must not report before being marked down'
         ),
         Option(
+            'hw_monitoring',
+            type='bool',
+            default=False,
+            desc='Deploy hw monitoring daemon on every host.'
+        ),
+        Option(
             'max_osd_draining_count',
             type='int',
             default=10,
@@ -560,6 +566,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
             self.agent_refresh_rate = 0
             self.agent_down_multiplier = 0.0
             self.agent_starting_port = 0
+            self.hw_monitoring = False
             self.service_discovery_port = 0
             self.secure_monitoring_stack = False
             self.apply_spec_fails: List[Tuple[str, str]] = []
