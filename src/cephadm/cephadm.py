@@ -175,6 +175,7 @@ from cephadmlib.daemons import (
     NFSGanesha,
     SNMPGateway,
     Tracing,
+    NodeProxy,
 )
 from cephadmlib.agent import http_query
 
@@ -223,6 +224,7 @@ def get_supported_daemons():
     supported_daemons.append(CephadmAgent.daemon_type)
     supported_daemons.append(SNMPGateway.daemon_type)
     supported_daemons.extend(Tracing.components)
+    supported_daemons.append(NodeProxy.daemon_type)
     assert len(supported_daemons) == len(set(supported_daemons))
     return supported_daemons
 
@@ -796,6 +798,10 @@ def create_daemon_dirs(
     elif daemon_type == SNMPGateway.daemon_type:
         sg = SNMPGateway.init(ctx, fsid, ident.daemon_id)
         sg.create_daemon_conf()
+
+    elif daemon_type == NodeProxy.daemon_type:
+        node_proxy = NodeProxy.init(ctx, fsid, ident.daemon_id)
+        node_proxy.create_daemon_dirs(data_dir, uid, gid)
 
     _write_custom_conf_files(ctx, ident, uid, gid)
 
