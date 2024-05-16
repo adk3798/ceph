@@ -2995,7 +2995,11 @@ Then run the following:
                                              forcename=name)
 
             if not did_config:
-                self.cephadm_services[service_type].config(spec)
+                config_success = self.cephadm_services[service_type].config(spec)
+                if config_success:
+                    self.spec_store.mark_configured(spec.service_name())
+                else:
+                    self.spec_store.tick_config_attempts(spec.service_name())
                 did_config = True
 
             daemon_spec = self.cephadm_services[service_type].make_daemon_spec(

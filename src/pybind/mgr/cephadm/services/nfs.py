@@ -8,7 +8,7 @@ from typing import Dict, Tuple, Any, List, cast, Optional
 from configparser import ConfigParser
 from io import StringIO
 
-from mgr_module import HandleCommandResult
+from mgr_module import HandleCommandResult, MonCommandFailed
 from mgr_module import NFS_POOL_NAME as POOL_NAME
 
 from ceph.deployment.service_spec import ServiceSpec, NFSServiceSpec
@@ -58,11 +58,16 @@ class NFSService(CephService):
                         del rank_map[rank][gen]
                         self.mgr.spec_store.save_rank_map(spec.service_name(), rank_map)
 
-    def config(self, spec: NFSServiceSpec) -> None:  # type: ignore
+    def config(self, spec: NFSServiceSpec) -> bool:  # type: ignore
         from nfs.cluster import create_ganesha_pool
 
         assert self.TYPE == spec.service_type
-        create_ganesha_pool(self.mgr)
+        try:
+            create_ganesha_pool(self.mgr)
+        except MonCommandFailed as e:
+            logger.warning(f'Failed creating ganesha pool: {str(e)}')
+            return False
+        return True
 
     def prepare_create(self, daemon_spec: CephadmDaemonDeploySpec) -> CephadmDaemonDeploySpec:
         assert self.TYPE == daemon_spec.daemon_type

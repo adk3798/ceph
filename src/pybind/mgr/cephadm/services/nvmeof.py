@@ -18,10 +18,15 @@ class NvmeofService(CephService):
     TYPE = 'nvmeof'
     PROMETHEUS_PORT = 10008
 
-    def config(self, spec: NvmeofServiceSpec) -> None:  # type: ignore
+    def config(self, spec: NvmeofServiceSpec) -> bool:  # type: ignore
         assert self.TYPE == spec.service_type
         assert spec.pool
+        # unlike some other config funcs, if this fails we can't
+        # go forward deploying the daemon and then retry later. For
+        # that reason we make no attempt to catch the OrchestratorError
+        # this may raise
         self.mgr._check_pool_exists(spec.pool, spec.service_name())
+        return True
 
     def prepare_create(self, daemon_spec: CephadmDaemonDeploySpec) -> CephadmDaemonDeploySpec:
         assert self.TYPE == daemon_spec.daemon_type

@@ -17,9 +17,10 @@ logger = logging.getLogger(__name__)
 class SMBService(CephService):
     TYPE = 'smb'
 
-    def config(self, spec: ServiceSpec) -> None:
+    def config(self, spec: ServiceSpec) -> bool:
         assert self.TYPE == spec.service_type
         logger.warning('config is a no-op')
+        return True
 
     def prepare_create(
         self, daemon_spec: CephadmDaemonDeploySpec

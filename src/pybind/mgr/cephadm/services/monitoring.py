@@ -6,7 +6,7 @@ import socket
 from typing import List, Any, Tuple, Dict, Optional, cast
 from urllib.parse import urlparse
 
-from mgr_module import HandleCommandResult
+from mgr_module import HandleCommandResult, MonCommandFailed
 
 from orchestrator import DaemonDescription
 from ceph.deployment.service_spec import AlertManagerSpec, GrafanaSpec, ServiceSpec, \
@@ -379,16 +379,21 @@ class PrometheusService(CephadmService):
     USER_CFG_KEY = 'prometheus/web_user'
     PASS_CFG_KEY = 'prometheus/web_password'
 
-    def config(self, spec: ServiceSpec) -> None:
+    def config(self, spec: ServiceSpec) -> bool:
         # make sure module is enabled
         mgr_map = self.mgr.get('mgr_map')
         if 'prometheus' not in mgr_map.get('services', {}):
-            self.mgr.check_mon_command({
-                'prefix': 'mgr module enable',
-                'module': 'prometheus'
-            })
+            try:
+                self.mgr.check_mon_command({
+                    'prefix': 'mgr module enable',
+                    'module': 'prometheus'
+                })
+            except MonCommandFailed as e:
+                logger.warning(f'Failed enabling prometheus mgr module: {str(e)}')
+                return False
             # we shouldn't get here (mon will tell the mgr to respawn), but no
             # harm done if we do.
+        return True
 
     def prepare_create(
             self,

@@ -214,6 +214,7 @@ class SpecStore():
         self.spec_deleted = {}  # type: Dict[str, datetime.datetime]
         self.spec_preview = {}  # type: Dict[str, ServiceSpec]
         self._needs_configuration: Dict[str, bool] = {}
+        self._config_attempts: Dict[str, int] = {}
 
     @property
     def all_specs(self) -> Mapping[str, ServiceSpec]:
@@ -267,6 +268,7 @@ class SpecStore():
 
                 if 'needs_configuration' in j:
                     self._needs_configuration[service_name] = cast(bool, j['needs_configuration'])
+                    self._config_attempts[service_name] = 0
 
                 if 'rank_map' in j and isinstance(j['rank_map'], dict):
                     self._rank_maps[service_name] = {}
@@ -305,6 +307,7 @@ class SpecStore():
             return None
         self._specs[name] = spec
         self._needs_configuration[name] = True
+        self._config_attempts[name] = 0
 
         if update_create:
             self.spec_created[name] = datetime_now()
@@ -361,6 +364,8 @@ class SpecStore():
                 del self.spec_deleted[service_name]
             if service_name in self._needs_configuration:
                 del self._needs_configuration[service_name]
+            if service_name in self._config_attempts:
+                del self._config_attempts[service_name]
             self.mgr.set_store(SPEC_STORE_PREFIX + service_name, None)
         return found
 
@@ -377,18 +382,30 @@ class SpecStore():
         return f'Set unmanaged to {str(value)} for service {service_name}'
 
     def needs_configuration(self, name: str) -> bool:
-        return self._needs_configuration.get(name, False)
+        needs_config = self._needs_configuration.get(name, False)
+        configs_attempted = self._config_attempts.get(name, 0)
+        if needs_config and configs_attempted < 3:
+            return True
+        return False
 
     def mark_needs_configuration(self, name: str) -> None:
         if name in self._specs:
             self._needs_configuration[name] = True
+            self._config_attempts[name] = 0
             self._save(name)
         else:
             self.mgr.log.warning(f'Attempted to mark unknown service "{name}" as needing configuration')
 
+    def tick_config_attempts(self, name: str) -> None:
+        if name in self._specs:
+            self._config_attempts[name] = self._config_attempts.get(name, 0) + 1
+        else:
+            self.mgr.log.warning(f'Attempted to update number of config attempts for unknown service "{name}"')
+
     def mark_configured(self, name: str) -> None:
         if name in self._specs:
             self._needs_configuration[name] = False
+            self._config_attempts[name] = 0
             self._save(name)
         else:
             self.mgr.log.warning(f'Attempted to mark unknown service "{name}" as having been configured')

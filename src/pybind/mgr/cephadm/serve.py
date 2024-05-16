@@ -1018,8 +1018,11 @@ class CephadmServe:
             raise
         finally:
             if self.mgr.spec_store.needs_configuration(spec.service_name()):
-                svc.config(spec)
-                self.mgr.spec_store.mark_configured(spec.service_name())
+                config_success = svc.config(spec)
+                if config_success:
+                    self.mgr.spec_store.mark_configured(spec.service_name())
+                else:
+                    self.mgr.spec_store.tick_config_attempts(spec.service_name())
             if self.mgr.use_agent:
                 # can only send ack to agents if we know for sure port they bound to
                 hosts_altered = set([h for h in hosts_altered if (h in self.mgr.agent_cache.agent_ports and not self.mgr.cache.is_host_draining(h))])

@@ -18,10 +18,15 @@ logger = logging.getLogger(__name__)
 class IscsiService(CephService):
     TYPE = 'iscsi'
 
-    def config(self, spec: IscsiServiceSpec) -> None:  # type: ignore
+    def config(self, spec: IscsiServiceSpec) -> bool:  # type: ignore
         assert self.TYPE == spec.service_type
         assert spec.pool
+        # unlike some other config funcs, if this fails we can't
+        # go forward deploying the daemon and then retry later. For
+        # that reason we make no attempt to catch the OrchestratorError
+        # this may raise
         self.mgr._check_pool_exists(spec.pool, spec.service_name())
+        return True
 
     def get_trusted_ips(self, spec: IscsiServiceSpec) -> str:
         # add active mgr ip address to trusted list so dashboard can access

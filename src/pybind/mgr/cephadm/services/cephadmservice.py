@@ -279,12 +279,12 @@ class CephadmService(metaclass=ABCMeta):
     def generate_config(self, daemon_spec: CephadmDaemonDeploySpec) -> Tuple[Dict[str, Any], List[str]]:
         raise NotImplementedError()
 
-    def config(self, spec: ServiceSpec) -> None:
+    def config(self, spec: ServiceSpec) -> bool:
         """
         Configure the cluster for this service. Only called *once* per
         service apply. Not for every daemon.
         """
-        pass
+        return True
 
     def daemon_check_post(self, daemon_descrs: List[DaemonDescription]) -> None:
         """The post actions needed to be done after daemons are checked"""
@@ -634,9 +634,9 @@ class MonService(CephService):
 
         return daemon_spec
 
-    def config(self, spec: ServiceSpec) -> None:
+    def config(self, spec: ServiceSpec) -> bool:
         assert self.TYPE == spec.service_type
-        self.set_crush_locations(self.mgr.cache.get_daemons_by_type('mon'), spec)
+        return self.set_crush_locations(self.mgr.cache.get_daemons_by_type('mon'), spec)
 
     def _get_quorum_status(self) -> Dict[Any, Any]:
         ret, out, err = self.mgr.check_mon_command({
@@ -703,15 +703,16 @@ class MonService(CephService):
 
         return daemon_spec.final_config, daemon_spec.deps
 
-    def set_crush_locations(self, daemon_descrs: List[DaemonDescription], spec: ServiceSpec) -> None:
+    def set_crush_locations(self, daemon_descrs: List[DaemonDescription], spec: ServiceSpec) -> bool:
         logger.debug('Setting mon crush locations from spec')
+        success = True
         if not daemon_descrs:
-            return
+            return success
         assert self.TYPE == spec.service_type
         mon_spec = cast(MONSpec, spec)
 
         if not mon_spec.crush_locations:
-            return
+            return success
 
         quorum_status = self._get_quorum_status()
         mons_in_monmap = [m['name'] for m in quorum_status['monmap']['mons']]
@@ -727,6 +728,7 @@ class MonService(CephService):
             try:
                 current_crush_locs = [m['crush_location'] for m in quorum_status['monmap']['mons'] if m['name'] == dd.daemon_id][0]
             except (KeyError, IndexError) as e:
+                success = False
                 logger.warning(f'Failed setting crush location for mon {dd.daemon_id}: {e}\n'
                                'Mon may not have a monmap entry yet. Try re-applying mon spec once mon is confirmed up.')
             desired_crush_locs = '{' + ','.join(mon_spec.crush_locations[dd.hostname]) + '}'
@@ -741,7 +743,9 @@ class MonService(CephService):
                         'args': mon_spec.crush_locations[dd.hostname]
                     })
                 except Exception as e:
+                    success = False
                     logger.error(f'Failed setting crush location for mon {dd.daemon_id}: {e}')
+        return success
 
 
 class MgrService(CephService):
@@ -871,17 +875,22 @@ class MdsService(CephService):
     def allow_colo(self) -> bool:
         return True
 
-    def config(self, spec: ServiceSpec) -> None:
+    def config(self, spec: ServiceSpec) -> bool:
         assert self.TYPE == spec.service_type
         assert spec.service_id
 
         # ensure mds_join_fs is set for these daemons
-        ret, out, err = self.mgr.check_mon_command({
-            'prefix': 'config set',
-            'who': 'mds.' + spec.service_id,
-            'name': 'mds_join_fs',
-            'value': spec.service_id,
-        })
+        try:
+            ret, out, err = self.mgr.check_mon_command({
+                'prefix': 'config set',
+                'who': 'mds.' + spec.service_id,
+                'name': 'mds_join_fs',
+                'value': spec.service_id,
+            })
+        except MonCommandFailed as e:
+            logger.warning(f'Failed setting mds_join_fs for mds.{spec.service_id}: {str(e)}')
+            return False
+        return True
 
     def prepare_create(self, daemon_spec: CephadmDaemonDeploySpec) -> CephadmDaemonDeploySpec:
         assert self.TYPE == daemon_spec.daemon_type
@@ -927,31 +936,45 @@ class RgwService(CephService):
     def allow_colo(self) -> bool:
         return True
 
-    def config(self, spec: RGWSpec) -> None:  # type: ignore
+    def config(self, spec: RGWSpec) -> bool:  # type: ignore
         assert self.TYPE == spec.service_type
+        success = True
 
         # set rgw_realm rgw_zonegroup and rgw_zone, if present
+        rgw_name = f"{utils.name_to_config_section('rgw')}.{spec.service_id}"
         if spec.rgw_realm:
-            ret, out, err = self.mgr.check_mon_command({
-                'prefix': 'config set',
-                'who': f"{utils.name_to_config_section('rgw')}.{spec.service_id}",
-                'name': 'rgw_realm',
-                'value': spec.rgw_realm,
-            })
+            try:
+                ret, out, err = self.mgr.check_mon_command({
+                    'prefix': 'config set',
+                    'who': rgw_name,
+                    'name': 'rgw_realm',
+                    'value': spec.rgw_realm,
+                })
+            except MonCommandFailed as e:
+                success = False
+                logger.warning(f'Failed setting rgw_realm for {rgw_name}: {str(e)}')
         if spec.rgw_zonegroup:
-            ret, out, err = self.mgr.check_mon_command({
-                'prefix': 'config set',
-                'who': f"{utils.name_to_config_section('rgw')}.{spec.service_id}",
-                'name': 'rgw_zonegroup',
-                'value': spec.rgw_zonegroup,
-            })
+            try:
+                ret, out, err = self.mgr.check_mon_command({
+                    'prefix': 'config set',
+                    'who': rgw_name,
+                    'name': 'rgw_zonegroup',
+                    'value': spec.rgw_zonegroup,
+                })
+            except MonCommandFailed as e:
+                success = False
+                logger.warning(f'Failed setting rgw_zonegroup for {rgw_name}: {str(e)}')
         if spec.rgw_zone:
-            ret, out, err = self.mgr.check_mon_command({
-                'prefix': 'config set',
-                'who': f"{utils.name_to_config_section('rgw')}.{spec.service_id}",
-                'name': 'rgw_zone',
-                'value': spec.rgw_zone,
-            })
+            try:
+                ret, out, err = self.mgr.check_mon_command({
+                    'prefix': 'config set',
+                    'who': rgw_name,
+                    'name': 'rgw_zone',
+                    'value': spec.rgw_zone,
+                })
+            except MonCommandFailed as e:
+                success = False
+                logger.warning(f'Failed setting rgw_zone for {rgw_name}: {str(e)}')
 
         if spec.rgw_frontend_ssl_certificate:
             if isinstance(spec.rgw_frontend_ssl_certificate, list):
@@ -962,11 +985,15 @@ class RgwService(CephService):
                 raise OrchestratorError(
                     'Invalid rgw_frontend_ssl_certificate: %s'
                     % spec.rgw_frontend_ssl_certificate)
-            ret, out, err = self.mgr.check_mon_command({
-                'prefix': 'config-key set',
-                'key': f'rgw/cert/{spec.service_name()}',
-                'val': cert_data,
-            })
+            try:
+                ret, out, err = self.mgr.check_mon_command({
+                    'prefix': 'config-key set',
+                    'key': f'rgw/cert/{spec.service_name()}',
+                    'val': cert_data,
+                })
+            except MonCommandFailed as e:
+                success = False
+                logger.warning(f'Failed storing {spec.service_name()} cert in config-key store: {str(e)}')
 
         if spec.zonegroup_hostnames:
             zg_update_cmd = {
@@ -977,13 +1004,18 @@ class RgwService(CephService):
                 'hostnames': spec.zonegroup_hostnames,
             }
             logger.debug(f'rgw cmd: {zg_update_cmd}')
-            ret, out, err = self.mgr.check_mon_command(zg_update_cmd)
+            try:
+                ret, out, err = self.mgr.mon_command(zg_update_cmd)
+            except MonCommandFailed as e:
+                success = False
+                logger.warning(f'Failed setting zonegroup hostnames: {str(e)}')
 
         # TODO: fail, if we don't have a spec
         logger.info('Saving service %s spec with placement %s' % (
             spec.service_name(), spec.placement.pretty_str()))
         self.mgr.spec_store.save(spec)
         self.mgr.trigger_connect_dashboard_rgw()
+        return success
 
     def prepare_create(self, daemon_spec: CephadmDaemonDeploySpec) -> CephadmDaemonDeploySpec:
         assert self.TYPE == daemon_spec.daemon_type
@@ -1235,17 +1267,22 @@ class CephExporterService(CephService):
 class CephfsMirrorService(CephService):
     TYPE = 'cephfs-mirror'
 
-    def config(self, spec: ServiceSpec) -> None:
+    def config(self, spec: ServiceSpec) -> bool:
         # make sure mirroring module is enabled
         mgr_map = self.mgr.get('mgr_map')
         mod_name = 'mirroring'
         if mod_name not in mgr_map.get('services', {}):
-            self.mgr.check_mon_command({
-                'prefix': 'mgr module enable',
-                'module': mod_name
-            })
+            try:
+                self.mgr.check_mon_command({
+                    'prefix': 'mgr module enable',
+                    'module': mod_name
+                })
+            except MonCommandFailed as e:
+                logger.warning(f'Failed to enable {mod_name} mgr module: {str(e)}')
+                return False
             # we shouldn't get here (mon will tell the mgr to respawn), but no
             # harm done if we do.
+        return True
 
     def prepare_create(self, daemon_spec: CephadmDaemonDeploySpec) -> CephadmDaemonDeploySpec:
         assert self.TYPE == daemon_spec.daemon_type
