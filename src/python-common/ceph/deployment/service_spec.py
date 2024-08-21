@@ -1703,6 +1703,7 @@ class IngressSpec(ServiceSpec):
                  extra_entrypoint_args: Optional[GeneralArgList] = None,
                  custom_configs: Optional[List[CustomConfig]] = None,
                  health_check_interval: Optional[str] = None,
+                 haproxy_qat_support: bool = False,
                  ):
         assert service_type == 'ingress'
 
@@ -1737,6 +1738,7 @@ class IngressSpec(ServiceSpec):
         self.enable_haproxy_protocol = enable_haproxy_protocol
         self.health_check_interval = health_check_interval.strip(
         ) if health_check_interval else None
+        self.haproxy_qat_support = haproxy_qat_support
 
     def get_port_start(self) -> List[int]:
         ports = []
