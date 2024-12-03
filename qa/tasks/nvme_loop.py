@@ -94,52 +94,6 @@ def task(ctx, config):
                 '''{
                   "Devices":[
                     {
-                      ...
-                    },
-                    {
-                      "HostNQN":"hostnqn",
-                      "HostID":"898a0e10-da2d-4a42-8017-d9c445089d0c",
-                      "Subsystems":[
-                        {
-                          "Subsystem":"nvme-subsys1",
-                          "SubsystemNQN":"lv_1",
-                          "Controllers":[
-                            {
-                              "Controller":"nvme1",
-                              "Cntlid":"1",
-                              "SerialNumber":"a207961b58e42af75d2e",
-                              "ModelNumber":"Linux",
-                              "Firmware":"5.14.0-5",
-                              "Transport":"loop",
-                              "Address":"",
-                              "Slot":"",
-                              "Namespaces":[
-                              ],
-                              "Paths":[
-                                {
-                                  "Path":"nvme1c1n1",
-                                  "ANAState":"optimized"
-                                }
-                              ]
-                            }
-                          ],
-                          "Namespaces":[
-                            {
-                              "NameSpace":"nvme1n1",
-                              "Generic":"ng1n1",
-                              "NSID":1,
-                              "UsedBytes":95995035648,
-                              "MaximumLBA":187490304,
-                              "PhysicalSize":95995035648,
-                              "SectorSize":512
-                            }
-                          ]
-                        },
-                        ...
-                }'''
-                '''{
-                  "Devices":[
-                    {
                       "HostNQN":"nqn.2014-08.org.nvmexpress:uuid:00000000-0000-0000-0000-0cc47ada6ba4",
                       "HostID":"898a0e10-da2d-4a42-8017-d9c445089d0c",
                       "Subsystems":[
@@ -182,19 +136,20 @@ def task(ctx, config):
                 nvme_list = json.loads(p.stdout.getvalue())
                 for device in nvme_list['Devices']:
                     try:
+                        # first try format 1 / older format
                         dev = device['DevicePath']
-                    except KeyError:
-                        try:
-                            dev = '/dev/' + device['Subsystems']['Controllers']['Paths'][0]['Path']
-                        except KeyError:
-                            dev = '/dev/' + device['Subsystems']['Controllers']['Namespaces'][0]['NameSpace']
-                    try:
                         vendor = device['ModelNumber']
+                        if dev.startswith('/dev/') and vendor == 'Linux':
+                            new_devs.append(dev)
+                            bluestore_zap(remote, dev)
                     except KeyError:
-                        vendor = device['Controllers']['ModelNumber']
-                    if dev.startswith('/dev/') and vendor == 'Linux':
-                        new_devs.append(dev)
-                        bluestore_zap(remote, dev)
+                        # try format 2 / newer format
+                        for subsystem in device['Subsystems']:
+                            dev = '/dev/' + subsystem['Namespaces'][0]['NameSpace']
+                            vendor = subsystem['Controllers'][0]['ModelNumber']
+                            if vendor == 'Linux':
+                                new_devs.append(dev)
+                                bluestore_zap(remote, dev)
                 log.info(f'new_devs {new_devs}')
                 assert len(new_devs) <= len(devs)
                 if len(new_devs) == len(devs):
