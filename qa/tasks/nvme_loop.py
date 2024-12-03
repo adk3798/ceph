@@ -185,9 +185,9 @@ def task(ctx, config):
                         dev = device['DevicePath']
                     except KeyError:
                         try:
-                            dev = '/dev/' + device['Subsystems']['Controllers']['Paths']['Path']
+                            dev = '/dev/' + device['Subsystems']['Controllers']['Paths'][0]['Path']
                         except KeyError:
-                            dev = '/dev/' + device['Subsystems']['Controllers']['Namespaces']['NameSpace']
+                            dev = '/dev/' + device['Subsystems']['Controllers']['Namespaces'][0]['NameSpace']
                     try:
                         vendor = device['ModelNumber']
                     except KeyError:
