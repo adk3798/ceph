@@ -158,20 +158,30 @@ class TestNFS(MgrTestCase):
             while proceed():
                 try:
                     # Disable any running nfs ganesha daemon
+                    log.error('XXXXXXXX Checking nfs server status')
                     self._check_nfs_server_status()
+                    log.error('XXXXXXXX Attempting nfs cluster create')
                     cluster_create = self._nfs_complete_cmd(
                         f'cluster create {self.cluster_id}')
                     if cluster_create.stderr and 'cluster already exists' \
                             in cluster_create.stderr.getvalue():
+                        log.error('XXXXXXXX Attempting nfs cluster delete')
                         self._test_delete_cluster()
+                        # _test_delete_cluster has an internal call that to
+                        # _check_nfs_cluster_status that has sleep=6, tries=10 passed to
+                        # its contextutil.safe_while (as of writing this anyway)
+                        # That means we have a loop
                         continue
                     # Check for expected status and daemon name
                     # (nfs.<cluster_id>)
+                    log.error('XXXXXXXX Attempting checking nfs cluster status')
                     self._check_nfs_cluster_status(
                         'running', 'NFS Ganesha cluster deployment failed')
                     break
                 except (AssertionError, CommandFailedError) as e:
                     log.warning(f'{e}, retrying')
+                except Exception as e:
+                    log.error(f'XXXXXX got unexpected exception {str(e)}')
 
     def _test_delete_cluster(self):
         '''
