@@ -167,10 +167,6 @@ class TestNFS(MgrTestCase):
                             in cluster_create.stderr.getvalue():
                         log.error('XXXXXXXX Attempting nfs cluster delete')
                         self._test_delete_cluster()
-                        # _test_delete_cluster has an internal call that to
-                        # _check_nfs_cluster_status that has sleep=6, tries=10 passed to
-                        # its contextutil.safe_while (as of writing this anyway)
-                        # That means we have a loop
                         continue
                     # Check for expected status and daemon name
                     # (nfs.<cluster_id>)
