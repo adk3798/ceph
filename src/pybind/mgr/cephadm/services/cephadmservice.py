@@ -1227,15 +1227,6 @@ class RgwService(CephService):
 
         return daemon_spec
 
-    def generate_config(self, daemon_spec: CephadmDaemonDeploySpec) -> Tuple[Dict[str, Any], List[str]]:
-        daemon_spec.final_config, daemon_spec.deps = super().generate_config(daemon_spec)
-
-        rgw_spec = cast(RGWSpec, self.mgr.spec_store[daemon_spec.service_name].spec)
-        if hasattr(rgw_spec, 'rgw_exit_timeout_secs') and rgw_spec.rgw_exit_timeout_secs:
-            daemon_spec.final_config['rgw_exit_timeout_secs'] = rgw_spec.rgw_exit_timeout_secs
-
-        return daemon_spec.final_config, daemon_spec.deps
-
     def get_keyring(self, rgw_id: str) -> str:
         keyring = self.get_keyring_with_caps(self.get_auth_entity(rgw_id),
                                              ['mon', 'allow *',
@@ -1313,6 +1304,9 @@ class RgwService(CephService):
     def generate_config(self, daemon_spec: CephadmDaemonDeploySpec) -> Tuple[Dict[str, Any], List[str]]:
         svc_spec = cast(RGWSpec, self.mgr.spec_store[daemon_spec.service_name].spec)
         config, parent_deps = super().generate_config(daemon_spec)
+        if hasattr(svc_spec, 'rgw_exit_timeout_secs') and svc_spec.rgw_exit_timeout_secs:
+            config['rgw_exit_timeout_secs'] = svc_spec.rgw_exit_timeout_secs
+
         rgw_deps = parent_deps + self.get_dependencies(self.mgr, svc_spec)
         return config, rgw_deps
 
