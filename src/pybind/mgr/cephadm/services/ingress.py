@@ -246,6 +246,19 @@ class IngressService(CephService):
             if spec.ssl_key:
                 config_files['files']['haproxy.pem.key'] = spec.ssl_key
 
+        if spec.verify_backend_ssl_cert:
+            if spec.generate_cert:
+                # ca cert for the backend should be our cephadm CA cert
+                config_files['files']['ca_cert.pem'] = self.mgr.cert_mgr.get_root_ca()
+            elif spec.verification_ca_cert:
+                # user provided ca cert we can use to verify the backend
+                config_files['files']['ca_cert.pem'] = spec.verification_ca_cert
+            else:
+                raise OrchestratorError(
+                    'Found ingress spec with "verify_backend_ssl_cert" set to true, but '
+                    'neither "generate_cert" nor "verification_ca_cert" fields set'
+                )
+
         return config_files, self.get_haproxy_dependencies(self.mgr, spec)
 
     def keepalived_prepare_create(
