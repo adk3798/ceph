@@ -3133,6 +3133,18 @@ Then run the following:
             self.events.from_orch_error(e)
             raise
 
+    @handle_orch_error
+    def get_batch_cmd(self, osd_id: int) -> str:
+        try:
+            osd_daemon = self.cache.get_daemon(daemon_name=f'osd.{osd_id}')
+        except OrchestratorError:
+            raise OrchestratorError(f'Could not find osd "osd.{osd_id}"')
+        assert osd_daemon.hostname is not None
+        batch_cmd = self.cache.get_batch_command(osd_daemon.hostname, osd_id)
+        if not batch_cmd:
+            raise OrchestratorError(f'No batch cmd found for osd "osd.{osd_id}"')
+        return batch_cmd
+
     def _get_alertmanager_credentials(self) -> Tuple[str, str]:
         user = self.get_store(AlertmanagerService.USER_CFG_KEY)
         password = self.get_store(AlertmanagerService.PASS_CFG_KEY)

@@ -85,6 +85,7 @@ class OSDService(CephService):
                                  drive_group: DriveGroupSpec,
                                  host: str, cmds: List[str], replace_osd_ids: List[str],
                                  env_vars: Optional[List[str]] = None) -> str:
+        logger.error(f'create single host {host}')
         for cmd in cmds:
             out, err, code = await self._run_ceph_volume_command(host, cmd, env_vars=env_vars)
             if code == 1 and ', it is already prepared' in '\n'.join(err):
@@ -97,6 +98,7 @@ class OSDService(CephService):
                 raise RuntimeError(
                     'cephadm exited with an error code: %d, stderr:%s' % (
                         code, '\n'.join(err)))
+        logger.error(f'create single host got cmds {cmds}')
         return await self.deploy_osd_daemons_for_existing_osds(host, drive_group,
                                                                replace_osd_ids, cmds)
 
@@ -108,6 +110,7 @@ class OSDService(CephService):
         c_v_prep_cmds: Optional[List[str]] = None,
     ) -> str:
 
+        logger.error(f'deploy osd for existing for {host} | {c_v_prep_cmds}')
         if replace_osd_ids is None:
             replace_osd_ids = OsdIdClaims(self.mgr).filtered_by_host(host)
             assert replace_osd_ids is not None

@@ -1632,6 +1632,15 @@ Usage:
 
         return HandleCommandResult(stdout=res)
 
+    @_cli_read_command('orch osd get-batch-cmd')
+    def _get_batch_cmd(self, osd_id: int) -> HandleCommandResult:
+        """
+        Get lvm batch command used to make OSD (if we know it)
+        """
+        completion = self.get_batch_cmd(osd_id)
+        batch_cmd = raise_if_exception(completion)
+        return HandleCommandResult(stdout=batch_cmd)
+
     @_cli_write_command('orch daemon add')
     def daemon_add_misc(self,
                         daemon_type: Optional[ServiceType] = None,

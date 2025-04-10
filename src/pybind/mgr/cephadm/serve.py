@@ -1358,6 +1358,7 @@ class CephadmServe:
         ).service_id(), overwrite=True):
 
             try:
+                self.mgr.log.error(f'{daemon_spec.name()} | {batch_cmd}')
                 image = ''
                 start_time = datetime_now()
                 ports: List[int] = daemon_spec.ports if daemon_spec.ports else []
@@ -1457,7 +1458,9 @@ class CephadmServe:
                     self.mgr.agent_cache.agent_timestamp[daemon_spec.host] = datetime_now()
                     self.mgr.agent_cache.agent_counter[daemon_spec.host] = 1
 
+                self.mgr.log.error('QQQQQQQQQ')
                 if batch_cmd:
+                    self.mgr.log.error(f'WWWWW | {daemon_spec.name()} | {batch_cmd}')
                     if daemon_spec.daemon_type != 'osd':
                         raise OrchestratorError(
                             f'Got unexpected batch command: "{batch_cmd}" with non-OSD daemon {daemon_spec.name()}'

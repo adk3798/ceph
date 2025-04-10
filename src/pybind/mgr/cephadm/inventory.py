@@ -1377,6 +1377,8 @@ class HostCache():
         return daemon_names
 
     def save_batch_command(self, host: str, osd_id: int, batch_cmd: str) -> None:
+        self.mgr.log.error(f'SSSSSSSSSSSSSave')
+        self.mgr.log.error(f'{host} | {osd_id} | {batch_cmd}')
         if host not in self.batch_commands:
             self.batch_commands[host] = {}
         if batch_cmd in self.batch_commands[host]:
@@ -1386,6 +1388,8 @@ class HostCache():
         self.save_host(host)
 
     def get_batch_command(self, host: str, osd_id: int) -> Optional[str]:
+        self.mgr.log.error(f'GGGGGGGGGGGGet')
+        self.mgr.log.error(f'{host} | {osd_id}')
         if host not in self.batch_commands:
             return None
         for batch_cmd, osd_ids in self.batch_commands[host].items():
@@ -1394,6 +1398,8 @@ class HostCache():
         return None
 
     def clear_batch_command(self, host: str, osd_id: int) -> None:
+        self.mgr.log.error(f'CCCCCCCCClear')
+        self.mgr.log.error(f'{host} | {osd_id}')
         batch_cmd = self.get_batch_command(host, osd_id)
         if not batch_cmd:
             return

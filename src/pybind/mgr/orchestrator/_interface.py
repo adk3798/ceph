@@ -806,6 +806,10 @@ class Orchestrator(object):
         """ set service of osd """
         raise NotImplementedError()
 
+    def get_batch_cmd(self, osd_id: int) -> OrchResult:
+        """ set service of osd """
+        raise NotImplementedError()
+
     def blink_device_light(self, ident_fault: str, on: bool, locations: List['DeviceLightLoc']) -> OrchResult[List[str]]:
         """
         Instructs the orchestrator to enable or disable either the ident or the fault LED.
