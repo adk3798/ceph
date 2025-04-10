@@ -797,6 +797,9 @@ class HostCache():
 
         self.metadata_up_to_date = {}  # type: Dict[str, bool]
 
+        # hostname -> batch cmd -> osd ids
+        self.batch_commands: Dict[str, Dict[str, List[int]]] = {}
+
     def load(self):
         # type: () -> None
         for k, v in self.mgr.get_store_prefix(HOST_CACHE_PREFIX).items():
@@ -851,6 +854,7 @@ class HostCache():
                 self.registry_login_queue.add(host)
                 self.scheduled_daemon_actions[host] = j.get('scheduled_daemon_actions', {})
                 self.metadata_up_to_date[host] = j.get('metadata_up_to_date', False)
+                self.batch_commands = j.get('batch_commands', {})
 
                 self.mgr.log.debug(
                     'HostCache.load: host %s has %d daemons, '
@@ -991,6 +995,7 @@ class HostCache():
         self.osdspec_previews_refresh_queue.append(host)
         self.registry_login_queue.add(host)
         self.last_client_files[host] = {}
+        self.batch_commands[host] = {}
 
     def refresh_all_host_info(self, host):
         # type: (str) -> None
@@ -1073,6 +1078,8 @@ class HostCache():
             j['metadata_up_to_date'] = self.metadata_up_to_date[host]
         if host in self.devices:
             self.save_host_devices(host)
+        if host in self.batch_commands:
+            j['batch_commands'] = self.batch_commands[host]
 
         self.mgr.set_store(HOST_CACHE_PREFIX + host, json.dumps(j))
 
@@ -1172,6 +1179,8 @@ class HostCache():
             del self.scheduled_daemon_actions[host]
         if host in self.last_client_files:
             del self.last_client_files[host]
+        if host in self.batch_commands:
+            del self.batch_commands[host]
         self.mgr.set_store(HOST_CACHE_PREFIX + host, None)
 
     def get_hosts(self):
@@ -1366,6 +1375,36 @@ class HostCache():
             for dd in self.get_daemons_by_type(daemon_type):
                 daemon_names.append(dd.name())
         return daemon_names
+
+    def save_batch_command(self, host: str, osd_id: int, batch_cmd: str) -> None:
+        if host not in self.batch_commands:
+            self.batch_commands[host] = {}
+        if batch_cmd in self.batch_commands[host]:
+            self.batch_commands[host][batch_cmd].append(osd_id)
+        else:
+            self.batch_commands[host][batch_cmd] = [osd_id]
+        self.save_host(host)
+
+    def get_batch_command(self, host: str, osd_id: int) -> Optional[str]:
+        if host not in self.batch_commands:
+            return None
+        for batch_cmd, osd_ids in self.batch_commands[host].items():
+            if osd_id in osd_ids:
+                return batch_cmd
+        return None
+
+    def clear_batch_command(self, host: str, osd_id: int) -> None:
+        batch_cmd = self.get_batch_command(host, osd_id)
+        if not batch_cmd:
+            return
+        else:
+            if len(self.batch_commands[host][batch_cmd]) == 1:
+                del self.batch_commands[host][batch_cmd]
+            else:
+                self.batch_commands[host][batch_cmd] = [
+                    o_id for o_id in self.batch_commands[host][batch_cmd] if o_id != osd_id
+                ]
+            self.save_host(host)
 
     def get_daemon_types(self, hostname: str) -> Set[str]:
         """Provide a list of the types of daemons on the host"""

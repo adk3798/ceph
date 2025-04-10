@@ -98,10 +98,15 @@ class OSDService(CephService):
                     'cephadm exited with an error code: %d, stderr:%s' % (
                         code, '\n'.join(err)))
         return await self.deploy_osd_daemons_for_existing_osds(host, drive_group,
-                                                               replace_osd_ids)
+                                                               replace_osd_ids, cmds)
 
-    async def deploy_osd_daemons_for_existing_osds(self, host: str, spec: DriveGroupSpec,
-                                                   replace_osd_ids: Optional[List[str]] = None) -> str:
+    async def deploy_osd_daemons_for_existing_osds(
+        self,
+        host: str,
+        spec: DriveGroupSpec,
+        replace_osd_ids: Optional[List[str]] = None,
+        c_v_prep_cmds: Optional[List[str]] = None,
+    ) -> str:
 
         if replace_osd_ids is None:
             replace_osd_ids = OsdIdClaims(self.mgr).filtered_by_host(host)
@@ -119,6 +124,16 @@ class OSDService(CephService):
         fsid = self.mgr._cluster_fsid
         osd_uuid_map = self.mgr.get_osd_uuid_map()
         created = []
+        # if method is lvm, there should only ever be one cmd since
+        # we batch the devices in this mode, but let's check anyway
+        batch_command = None
+        if (
+            (not spec.method or spec.method == 'lvm')
+            and c_v_prep_cmds is not None
+            and len(c_v_prep_cmds) == 1
+        ):
+            batch_command = c_v_prep_cmds[0]
+        logger.error(f'batch cmd for _create | {batch_command}')
         for osd_id, osds in osds_elems.items():
             for osd in osds:
                 if osd['type'] == 'db':
@@ -154,7 +169,9 @@ class OSDService(CephService):
                 daemon_spec.final_config, daemon_spec.deps = self.generate_config(daemon_spec)
                 await CephadmServe(self.mgr)._create_daemon(
                     daemon_spec,
-                    osd_uuid_map=osd_uuid_map)
+                    osd_uuid_map=osd_uuid_map,
+                    batch_cmd=batch_command
+                )
 
         # check result: raw
         raw_elems: dict = await CephadmServe(self.mgr)._run_cephadm_json(

@@ -1347,6 +1347,7 @@ class CephadmServe:
                              daemon_spec: CephadmDaemonDeploySpec,
                              reconfig: bool = False,
                              osd_uuid_map: Optional[Dict[str, Any]] = None,
+                             batch_cmd: Optional[str] = ''
                              ) -> str:
 
         daemon_params: Dict[str, Any] = {}
@@ -1455,6 +1456,13 @@ class CephadmServe:
                 if daemon_spec.daemon_type == 'agent':
                     self.mgr.agent_cache.agent_timestamp[daemon_spec.host] = datetime_now()
                     self.mgr.agent_cache.agent_counter[daemon_spec.host] = 1
+
+                if batch_cmd:
+                    if daemon_spec.daemon_type != 'osd':
+                        raise OrchestratorError(
+                            f'Got unexpected batch command: "{batch_cmd}" with non-OSD daemon {daemon_spec.name()}'
+                        )
+                    self.mgr.cache.save_batch_command(daemon_spec.host, int(daemon_spec.daemon_id), batch_cmd)
 
                 # refresh daemon state?  (ceph daemon reconfig does not need it)
                 if not reconfig or daemon_spec.daemon_type not in CEPH_TYPES:
@@ -1588,6 +1596,8 @@ class CephadmServe:
                                                             daemon_type)).post_remove(daemon, is_failed_deploy=False))
                     self.mgr._kick_serve_loop()
 
+            if daemon_type == 'osd':
+                self.mgr.cache.clear_batch_command(host, int(daemon_id))
             self.mgr.recently_altered_daemons[name] = datetime_now()
             return "Removed {} from host '{}'".format(name, host)
 
