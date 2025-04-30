@@ -5,6 +5,7 @@ import json
 import logging
 import uuid
 import os
+import concurrent.futures
 from collections import defaultdict
 from typing import TYPE_CHECKING, Optional, List, cast, Dict, Any, Union, Tuple, Set, \
     DefaultDict, Callable
@@ -617,25 +618,48 @@ class CephadmServe:
         for name in ['CEPHADM_APPLY_SPEC_FAIL', 'CEPHADM_DAEMON_PLACE_FAIL']:
             self.mgr.remove_health_warning(name)
         self.mgr.apply_spec_fails = []
+        nfs_specs = [s for s in specs if s.service_type == "nfs"]
+        for spec in nfs_specs:
+            specs.remove(spec)
+
+        self.log.info(f'Processing {len(nfs_specs)} NFS specs using multithreading.')
+        r = False
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = [executor.submit(self._process_spec, spec) for spec in nfs_specs]
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    result = future.result()
+                    if result:
+                        r = True
+                except Exception as e:
+                    self.log.exception(f'Unexpected error during threaded spec processing: {e}')
+
         for spec in specs:
-            try:
-                if self._apply_service(spec):
-                    r = True
-            except Exception as e:
-                msg = f'Failed to apply {spec.service_name()} spec {spec}: {str(e)}'
-                self.log.exception(msg)
-                self.mgr.events.for_service(spec, 'ERROR', 'Failed to apply: ' + str(e))
-                self.mgr.apply_spec_fails.append((spec.service_name(), str(e)))
-                warnings = []
-                for x in self.mgr.apply_spec_fails:
-                    warnings.append(f'{x[0]}: {x[1]}')
-                self.mgr.set_health_warning('CEPHADM_APPLY_SPEC_FAIL',
-                                            f"Failed to apply {len(self.mgr.apply_spec_fails)} service(s): {','.join(x[0] for x in self.mgr.apply_spec_fails)}",
-                                            len(self.mgr.apply_spec_fails),
-                                            warnings)
+            if self._process_spec(spec):
+                r = True
         self.mgr.update_watched_hosts()
         self.mgr.tuned_profile_utils._write_all_tuned_profiles()
         return r
+
+    def _process_spec(self, spec):
+        try:
+            if self._apply_service(spec):
+                return True
+        except Exception as e:
+            msg = f'Failed to apply {spec.service_name()} spec {spec}: {str(e)}'
+            self.log.exception(msg)
+            self.mgr.events.for_service(spec, 'ERROR', 'Failed to apply: ' + str(e))
+            self.mgr.apply_spec_fails.append((spec.service_name(), str(e)))
+            warnings = []
+            for x in self.mgr.apply_spec_fails:
+                warnings.append(f'{x[0]}: {x[1]}')
+            self.mgr.set_health_warning(
+                'CEPHADM_APPLY_SPEC_FAIL',
+                f"Failed to apply {len(self.mgr.apply_spec_fails)} service(s): {','.join(x[0] for x in self.mgr.apply_spec_fails)}",
+                len(self.mgr.apply_spec_fails),
+                warnings
+            )
+        return False
 
     def _apply_service_config(self, spec: ServiceSpec) -> None:
         if spec.config:
@@ -1068,120 +1092,137 @@ class CephadmServe:
     def _check_daemons(self) -> None:
         self.log.debug('_check_daemons')
         daemons = self.mgr.cache.get_daemons()
-        daemons_post: Dict[str, List[orchestrator.DaemonDescription]] = defaultdict(list)
+        nfs_daemons = [d for d in daemons if d.daemon_type == "nfs"]
+        daemons = [d for d in daemons if d.daemon_type != "nfs"]
+
+        self.log.info(f'Processing {len(nfs_daemons)} check daemons using multithreading.')
+        # Defaults to CPU Count + 4, max 32threads
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = [executor.submit(self._check_daemon_process, dd) for dd in nfs_daemons]
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    self.log.exception(f'Unexpected error during threaded check_daemon processing: {e}')
+
         for dd in daemons:
-            # orphan?
-            spec = self.mgr.spec_store.active_specs.get(dd.service_name(), None)
-            assert dd.hostname is not None
-            assert dd.daemon_type is not None
-            assert dd.daemon_id is not None
+            self._check_daemon_process(dd)
 
-            # any action we can try will fail for a daemon on an offline host,
-            # including removing the daemon
-            if dd.hostname in self.mgr.offline_hosts:
-                continue
 
-            if not spec and dd.daemon_type not in ['mon', 'mgr', 'osd']:
-                # (mon and mgr specs should always exist; osds aren't matched
-                # to a service spec)
-                self.log.info('Removing orphan daemon %s...' % dd.name())
-                self._remove_daemon(dd.name(), dd.hostname)
+    def _check_daemon_process(self, dd) -> None:
+        self.log.debug('_check_daemons')
+        daemons_post: Dict[str, List[orchestrator.DaemonDescription]] = defaultdict(list)
+        spec = self.mgr.spec_store.active_specs.get(dd.service_name(), None)
+        assert dd.hostname is not None
+        assert dd.daemon_type is not None
+        assert dd.daemon_id is not None
 
-            # ignore unmanaged services
-            if spec and spec.unmanaged:
-                continue
+        # any action we can try will fail for a daemon on an offline host,
+        # including removing the daemon
+        if dd.hostname in self.mgr.offline_hosts:
+            return
 
-            # ignore daemons for deleted services
-            if dd.service_name() in self.mgr.spec_store.spec_deleted:
-                continue
+        if not spec and dd.daemon_type not in ['mon', 'mgr', 'osd']:
+            # (mon and mgr specs should always exist; osds aren't matched
+            # to a service spec)
+            self.log.info('Removing orphan daemon %s...' % dd.name())
+            self._remove_daemon(dd.name(), dd.hostname)
 
-            if dd.daemon_type == 'agent':
-                try:
-                    self.mgr.agent_helpers._check_agent(dd.hostname)
-                except Exception as e:
-                    self.log.debug(
-                        f'Agent {dd.name()} could not be checked in _check_daemons: {e}')
-                continue
+        # ignore unmanaged services
+        if spec and spec.unmanaged:
+            return
 
-            # These daemon types require additional configs after creation
-            if dd.daemon_type in REQUIRES_POST_ACTIONS:
-                daemons_post[dd.daemon_type].append(dd)
+        # ignore daemons for deleted services
+        if dd.service_name() in self.mgr.spec_store.spec_deleted:
+            return
 
-            if service_registry.get_service(daemon_type_to_service(dd.daemon_type)).get_active_daemon(
-               self.mgr.cache.get_daemons_by_service(dd.service_name())).daemon_id == dd.daemon_id:
-                dd.is_active = True
-            else:
-                dd.is_active = False
-
-            deps = self.mgr._calc_daemon_deps(spec, dd.daemon_type, dd.daemon_id)
-            last_deps, last_config = self.mgr.cache.get_daemon_last_config_deps(
-                dd.hostname, dd.name())
-            if last_deps is None:
-                last_deps = []
-            action = self.mgr.cache.get_scheduled_daemon_action(dd.hostname, dd.name())
-            if not last_config:
-                self.log.info('Reconfiguring %s (unknown last config time)...' % (
-                    dd.name()))
-                action = 'reconfig'
-            elif last_deps != deps:
-                sym_diff = set(deps).symmetric_difference(last_deps)
-                self.log.info(f'Reconfiguring {dd.name()} deps {last_deps} -> {deps} (diff {sym_diff})')
-                action = 'reconfig'
-                # we need only redeploy if secure_monitoring_stack or mgmt-gateway value has changed:
-                # TODO(redo): check if we should just go always with redeploy (it's fast enough)
-                if dd.daemon_type in ['prometheus', 'node-exporter', 'alertmanager', 'ceph-exporter']:
-                    diff = list(set(last_deps).symmetric_difference(set(deps)))
-                    REDEPLOY_TRIGGERS = ['secure_monitoring_stack', 'mgmt-gateway']
-                    if any(svc in e for e in diff for svc in REDEPLOY_TRIGGERS):
-                        action = 'redeploy'
-                elif dd.daemon_type == 'jaeger-agent':
-                    # changes to jaeger-agent deps affect the way the unit.run for
-                    # the daemon is written, which we rewrite on redeploy, but not
-                    # on reconfig.
-                    action = 'redeploy'
-
-            elif spec is not None and hasattr(spec, 'extra_container_args') and dd.extra_container_args != spec.extra_container_args:
+        if dd.daemon_type == 'agent':
+            try:
+                self.mgr.agent_helpers._check_agent(dd.hostname)
+            except Exception as e:
                 self.log.debug(
-                    f'{dd.name()} container cli args {dd.extra_container_args} -> {spec.extra_container_args}')
-                self.log.info(f'Redeploying {dd.name()}, (container cli args changed) . . .')
-                dd.extra_container_args = spec.extra_container_args
-                action = 'redeploy'
-            elif spec is not None and hasattr(spec, 'extra_entrypoint_args') and dd.extra_entrypoint_args != spec.extra_entrypoint_args:
-                self.log.info(f'Redeploying {dd.name()}, (entrypoint args changed) . . .')
-                self.log.debug(
-                    f'{dd.name()} daemon entrypoint args {dd.extra_entrypoint_args} -> {spec.extra_entrypoint_args}')
-                dd.extra_entrypoint_args = spec.extra_entrypoint_args
-                action = 'redeploy'
-            elif self.mgr.last_monmap and \
-                    self.mgr.last_monmap > last_config and \
-                    dd.daemon_type in CEPH_TYPES:
-                self.log.info('Reconfiguring %s (monmap changed)...' % dd.name())
-                action = 'reconfig'
-            elif self.mgr.extra_ceph_conf_is_newer(last_config) and \
-                    dd.daemon_type in CEPH_TYPES:
-                self.log.info('Reconfiguring %s (extra config changed)...' % dd.name())
-                action = 'reconfig'
-            if action:
-                if self.mgr.cache.get_scheduled_daemon_action(dd.hostname, dd.name()) == 'redeploy' \
-                        and action == 'reconfig':
+                    f'Agent {dd.name()} could not be checked in _check_daemons: {e}')
+            return
+
+        # These daemon types require additional configs after creation
+        if dd.daemon_type in REQUIRES_POST_ACTIONS:
+            daemons_post[dd.daemon_type].append(dd)
+
+        if service_registry.get_service(daemon_type_to_service(dd.daemon_type)).get_active_daemon(
+            self.mgr.cache.get_daemons_by_service(dd.service_name())).daemon_id == dd.daemon_id:
+            dd.is_active = True
+        else:
+            dd.is_active = False
+
+        deps = self.mgr._calc_daemon_deps(spec, dd.daemon_type, dd.daemon_id)
+        last_deps, last_config = self.mgr.cache.get_daemon_last_config_deps(
+            dd.hostname, dd.name())
+        if last_deps is None:
+            last_deps = []
+        action = self.mgr.cache.get_scheduled_daemon_action(dd.hostname, dd.name())
+        if not last_config:
+            self.log.info('Reconfiguring %s (unknown last config time)...' % (
+                dd.name()))
+            action = 'reconfig'
+        elif last_deps != deps:
+            sym_diff = set(deps).symmetric_difference(last_deps)
+            self.log.info(f'Reconfiguring {dd.name()} deps {last_deps} -> {deps} (diff {sym_diff})')
+            action = 'reconfig'
+            # we need only redeploy if secure_monitoring_stack or mgmt-gateway value has changed:
+            # TODO(redo): check if we should just go always with redeploy (it's fast enough)
+            if dd.daemon_type in ['prometheus', 'node-exporter', 'alertmanager', 'ceph-exporter']:
+                diff = list(set(last_deps).symmetric_difference(set(deps)))
+                REDEPLOY_TRIGGERS = ['secure_monitoring_stack', 'mgmt-gateway']
+                if any(svc in e for e in diff for svc in REDEPLOY_TRIGGERS):
                     action = 'redeploy'
-                try:
-                    daemon_spec = CephadmDaemonDeploySpec.from_daemon_description(dd)
-                    self.mgr._daemon_action(daemon_spec, action=action)
-                    if self.mgr.cache.rm_scheduled_daemon_action(dd.hostname, dd.name()):
-                        self.mgr.cache.save_host(dd.hostname)
-                except OrchestratorError as e:
-                    self.log.exception(e)
-                    self.mgr.events.from_orch_error(e)
-                    if dd.daemon_type in daemons_post:
-                        del daemons_post[dd.daemon_type]
-                    # continue...
-                except Exception as e:
-                    self.log.exception(e)
-                    self.mgr.events.for_daemon_from_exception(dd.name(), e)
-                    if dd.daemon_type in daemons_post:
-                        del daemons_post[dd.daemon_type]
-                    # continue...
+            elif dd.daemon_type == 'jaeger-agent':
+                # changes to jaeger-agent deps affect the way the unit.run for
+                # the daemon is written, which we rewrite on redeploy, but not
+                # on reconfig.
+                action = 'redeploy'
+
+        elif spec is not None and hasattr(spec, 'extra_container_args') and dd.extra_container_args != spec.extra_container_args:
+            self.log.debug(
+                f'{dd.name()} container cli args {dd.extra_container_args} -> {spec.extra_container_args}')
+            self.log.info(f'Redeploying {dd.name()}, (container cli args changed) . . .')
+            dd.extra_container_args = spec.extra_container_args
+            action = 'redeploy'
+        elif spec is not None and hasattr(spec, 'extra_entrypoint_args') and dd.extra_entrypoint_args != spec.extra_entrypoint_args:
+            self.log.info(f'Redeploying {dd.name()}, (entrypoint args changed) . . .')
+            self.log.debug(
+                f'{dd.name()} daemon entrypoint args {dd.extra_entrypoint_args} -> {spec.extra_entrypoint_args}')
+            dd.extra_entrypoint_args = spec.extra_entrypoint_args
+            action = 'redeploy'
+        elif self.mgr.last_monmap and \
+                self.mgr.last_monmap > last_config and \
+                dd.daemon_type in CEPH_TYPES:
+            self.log.info('Reconfiguring %s (monmap changed)...' % dd.name())
+            action = 'reconfig'
+        elif self.mgr.extra_ceph_conf_is_newer(last_config) and \
+                dd.daemon_type in CEPH_TYPES:
+            self.log.info('Reconfiguring %s (extra config changed)...' % dd.name())
+            action = 'reconfig'
+        if action:
+            if self.mgr.cache.get_scheduled_daemon_action(dd.hostname, dd.name()) == 'redeploy' \
+                    and action == 'reconfig':
+                action = 'redeploy'
+            try:
+                daemon_spec = CephadmDaemonDeploySpec.from_daemon_description(dd)
+                self.mgr._daemon_action(daemon_spec, action=action)
+                if self.mgr.cache.rm_scheduled_daemon_action(dd.hostname, dd.name()):
+                    self.mgr.cache.save_host(dd.hostname)
+            except OrchestratorError as e:
+                self.log.exception(e)
+                self.mgr.events.from_orch_error(e)
+                if dd.daemon_type in daemons_post:
+                    del daemons_post[dd.daemon_type]
+                # continue...
+            except Exception as e:
+                self.log.exception(e)
+                self.mgr.events.for_daemon_from_exception(dd.name(), e)
+                if dd.daemon_type in daemons_post:
+                    del daemons_post[dd.daemon_type]
+                # continue...
 
         # do daemon post actions
         for daemon_type, daemon_descs in daemons_post.items():
