@@ -93,6 +93,11 @@ class NFSGanesha(ContainerDaemonForm):
             mounts[
                 os.path.join(data_dir, 'keyring.rgw')
             ] = '/var/lib/ceph/radosgw/%s-%s/keyring:z' % (cluster, rgw_user)
+        for kmip_cert_key_field in ['kmip_cert', 'kmip_ca_cert', 'kmip_key']:
+            if kmip_cert_key_field in self.files:
+                mounts[
+                    os.path.join(data_dir, 'etc/ganesha', kmip_cert_key_field)
+                ] = f'/etc/ganesha/kmip/{kmip_cert_key_field}.pem'
         return mounts
 
     def customize_container_mounts(
