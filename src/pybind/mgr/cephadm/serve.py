@@ -1161,6 +1161,16 @@ class CephadmServe:
                     dd.daemon_type in CEPH_TYPES:
                 self.log.info('Reconfiguring %s (extra config changed)...' % dd.name())
                 action = 'reconfig'
+            if spec:
+                new_ports = spec.get_port_start()
+                old_ports = dd.ports
+                old_ip = dd.ip
+                new_ip = utils.find_ip_on_host(hostname=dd.hostname, subnets=spec.networks, networks=self.mgr.cache.networks)
+                self.log.error(f'XXXXXXXXXX {new_ports} | {old_ports} | {old_ip} | {new_ip}')
+                if old_ports != new_ports or old_ip != new_ip:
+                    self.log.info('Reconfiguring %s (port/ip binding changed)...' % dd.name())
+                    self.log.debug(f'old ports: {old_ports}, new_ports: {new_ports}\nold_ip" {old_ip}, new_ip: {new_ip}')
+                    action = 'reconfig'
             if action:
                 if self.mgr.cache.get_scheduled_daemon_action(dd.hostname, dd.name()) == 'redeploy' \
                         and action == 'reconfig':
