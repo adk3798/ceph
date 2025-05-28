@@ -105,11 +105,6 @@ class DaemonPlacement(NamedTuple):
         # fixme: how to match against network?
         if self.name and self.name != dd.daemon_id:
             return False
-        if self.ports:
-            if self.ports != dd.ports and dd.ports:
-                return False
-            if self.ip != dd.ip and dd.ip:
-                return False
         return True
 
     def matches_rank_map(
