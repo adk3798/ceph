@@ -1,4 +1,3 @@
-import ipaddress
 import hashlib
 import logging
 import random
@@ -8,7 +7,7 @@ import orchestrator
 from ceph.deployment.service_spec import ServiceSpec
 from orchestrator._interface import DaemonDescription
 from orchestrator import OrchestratorValidationError
-from .utils import RESCHEDULE_FROM_OFFLINE_HOSTS_TYPES
+from .utils import RESCHEDULE_FROM_OFFLINE_HOSTS_TYPES, find_ip_on_host
 
 logger = logging.getLogger(__name__)
 T = TypeVar('T')
@@ -401,24 +400,6 @@ class HostAssignment(object):
         logger.debug('Combine hosts with existing daemons %s + new hosts %s' % (existing, to_add))
         return self.place_per_host_daemons(existing_slots + to_add, to_add, to_remove)
 
-    def find_ip_on_host(self, hostname: str, subnets: List[str]) -> Optional[str]:
-        for subnet in subnets:
-            # to normalize subnet
-            subnet = str(ipaddress.ip_network(subnet))
-            ips: List[str] = []
-            # following is to allow loopback interfaces for both ipv4 and ipv6. Since we
-            # only have the subnet (and no IP) we assume default loopback IP address.
-            if ipaddress.ip_network(subnet).is_loopback:
-                if ipaddress.ip_network(subnet).version == 4:
-                    ips.append('127.0.0.1')
-                else:
-                    ips.append('::1')
-            for iface, iface_ips in self.networks.get(hostname, {}).get(subnet, {}).items():
-                ips.extend(iface_ips)
-            if ips:
-                return sorted(ips)[0]
-        return None
-
     def get_candidates(self) -> List[DaemonPlacement]:
         if self.spec.placement.hosts:
             ls = [
@@ -459,7 +440,7 @@ class HostAssignment(object):
             orig = ls.copy()
             ls = []
             for p in orig:
-                ip = self.find_ip_on_host(p.hostname, self.spec.networks)
+                ip = find_ip_on_host(hostname=p.hostname, subnets=self.spec.networks, networks=self.networks)
                 if ip:
                     ls.append(DaemonPlacement(daemon_type=self.primary_daemon_type,
                                               hostname=p.hostname, network=p.network,

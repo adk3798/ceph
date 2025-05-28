@@ -1,9 +1,10 @@
+import ipaddress
 import logging
 import json
 import socket
 from enum import Enum
 from functools import wraps
-from typing import Optional, Callable, TypeVar, List, NewType, TYPE_CHECKING, Any, NamedTuple
+from typing import Optional, Callable, TypeVar, List, NewType, TYPE_CHECKING, Any, NamedTuple, Dict
 from orchestrator import OrchestratorError
 import hashlib
 
@@ -140,6 +141,29 @@ def resolve_ip(hostname: str) -> str:
         return r[0][4][0]
     except socket.gaierror as e:
         raise OrchestratorError(f"Cannot resolve ip for host {hostname}: {e}")
+
+
+def find_ip_on_host(
+    hostname: str,
+    subnets: List[str],
+    networks: Dict[str, Dict[str, Dict[str, List[str]]]]
+) -> Optional[str]:
+    for subnet in subnets:
+        # to normalize subnet
+        subnet = str(ipaddress.ip_network(subnet))
+        ips: List[str] = []
+        # following is to allow loopback interfaces for both ipv4 and ipv6. Since we
+        # only have the subnet (and no IP) we assume default loopback IP address.
+        if ipaddress.ip_network(subnet).is_loopback:
+            if ipaddress.ip_network(subnet).version == 4:
+                ips.append('127.0.0.1')
+            else:
+                ips.append('::1')
+        for iface, iface_ips in networks.get(hostname, {}).get(subnet, {}).items():
+            ips.extend(iface_ips)
+        if ips:
+            return sorted(ips)[0]
+    return None
 
 
 def ceph_release_to_major(release: str) -> int:
