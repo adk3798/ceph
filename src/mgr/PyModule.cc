@@ -182,7 +182,7 @@ namespace {
     PyModuleDef_HEAD_INIT,
     "ceph_logger",
     nullptr,
-    -1,
+    0,
     log_methods,
   };
 }
@@ -259,7 +259,7 @@ PyObject* PyModule::init_ceph_module()
     PyModuleDef_HEAD_INIT,
     "ceph_module",
     nullptr,
-    -1,
+    0,
     module_methods,
     nullptr,
     nullptr,
