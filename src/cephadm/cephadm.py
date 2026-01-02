@@ -29,6 +29,7 @@ from glob import glob
 from io import StringIO
 from threading import Thread, Event
 from pathlib import Path
+from enum import Enum
 from configparser import ConfigParser
 
 from cephadmlib.constants import (
@@ -203,7 +204,7 @@ from cephadmlib.listing_updaters import (
     VersionStatusUpdater,
 )
 from cephadmlib.container_lookup import infer_local_ceph_image, identify
-
+from ceph.cephadm.d3n import D3NCache, D3NCacheError
 
 FuncT = TypeVar('FuncT', bound=Callable)
 
@@ -873,13 +874,21 @@ def _update_container_args_for_podman(
     )
 
 
+def _d3n_fstab_entry(uuid: str, mountpoint: str, fs_type: str) -> str:
+    return f'UUID={uuid} {mountpoint} {fs_type} defaults,noatime 0 2\n'
+
+
 def _ensure_fstab_entry(ctx: CephadmContext, device: str, mountpoint: str, fs_type: str) -> None:
+    """
+    Ensure the device is present in /etc/fstab for the given mountpoint.
+    If an entry for mountpoint already exists, no changes are made.
+    """
     out, _, code = call(ctx, ['blkid', '-s', 'UUID', '-o', 'value', device])
     if code != 0 or not out.strip():
         raise Error(f'Failed to get UUID for {device}')
     uuid = out.strip()
 
-    entry = f'UUID={uuid} {mountpoint} {fs_type} defaults,noatime 0 2\n'
+    entry = _d3n_fstab_entry(uuid, mountpoint, fs_type)
 
     # check if mountpoint already present in fstab
     with open('/etc/fstab', 'r') as f:
@@ -895,27 +904,86 @@ def _ensure_fstab_entry(ctx: CephadmContext, device: str, mountpoint: str, fs_ty
         f.write(entry)
 
 
-def prepare_d3n_cache(
-    ctx: CephadmContext,
-    d3n_cache: Dict[str, Any],
-    uid: int,
-    gid: int,
+class D3NStateAction(str, Enum):
+    WRITE = 'write'
+    CLEANUP = 'cleanup'
+
+
+def d3n_state(
+        ctx: CephadmContext,
+        data_dir: str,
+        action: D3NStateAction,
+        d3n: Optional[D3NCache] = None,
+        uid: int = 0,
+        gid: int = 0,
 ) -> None:
-    device = d3n_cache.get('device')
-    fs_type = d3n_cache.get('filesystem', 'xfs')
-    mountpoint = d3n_cache.get('mountpoint')
-    cache_path = d3n_cache.get('cache_path')
-    size_bytes = d3n_cache.get('size_bytes')
+    """
+    Persist/read minimal D3N info in the daemon's data directory
+    so that rm-daemon can cleanup properly.
+    """
+    path = os.path.join(data_dir, 'd3n_state.json')
+
+    if action == D3NStateAction.WRITE:
+        if d3n is None:
+            return
+        state = {
+            'cache_path': d3n.cache_path,
+            'mount_path': d3n.mountpoint,
+        }
+        payload = json.dumps(state, sort_keys=True) + '\n'
+        with write_new(path, owner=(uid, gid)) as f:
+            f.write(payload)
+        return
+
+    if action == D3NStateAction.CLEANUP:
+        if not os.path.exists(path):
+            return
+
+        try:
+            with open(path, 'r') as f:
+                state = json.load(f)
+        except Exception:
+            state = {}
+
+        cache_path = state.get('cache_path') if isinstance(state, dict) else None
+        if isinstance(cache_path, str) and cache_path:
+            try:
+                shutil.rmtree(cache_path, ignore_errors=True)
+                logger.info(f'[D3N] removed cache directory: {cache_path}')
+            except Exception as e:
+                logger.warning(f'[D3N] failed to remove cache directory {cache_path}: {e}')
+
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            logger.warning(f'[D3N] failed to remove {path}: {e}')
+        return
+
+    raise Error(f'[D3N] invalid d3n_state action: {action}')
+
+
+def prepare_d3n_cache(ctx: CephadmContext, d3n: D3NCache, uid: int, gid: int) -> None:
+    """
+    Prepare a D3N cache mount and directory.
+
+    Steps:
+      1. Ensure mountpoint directory exists
+      2. Format device if it has no filesystem
+      3. Ensure /etc/fstab entry exists
+      4. Mount if not mounted
+      5. Ensure cache_path exists and is owned by daemon uid/gid
+    """
+    device = d3n.device
+    fs_type = d3n.filesystem
+    mountpoint = d3n.mountpoint
+    cache_path = d3n.cache_path
+    size_bytes = d3n.size_bytes
+
     logger.debug(
         f'[D3N] prepare_d3n_cache: device={device!r} fs_type={fs_type!r} mountpoint={mountpoint!r} cache_path={cache_path!r} size_bytes={size_bytes!r}'
     )
-
-    if not device:
-        raise Error('d3n_cache.device must be specified')
-    if not mountpoint:
-        raise Error('d3n_cache.mountpoint must be specified')
-    if not cache_path:
-        raise Error('d3n_cache.cache_path must be specified')
 
     # Ensure mountpoint exists
     os.makedirs(mountpoint, mode=0o755, exist_ok=True)
@@ -926,7 +994,7 @@ def prepare_d3n_cache(
         logger.debug(f'Formatting {device} with {fs_type} for D3N')
         call_throws(ctx, ['mkfs', '-t', fs_type, device])
 
-    # Persist the mount in /etc/fstab
+    # Ensure the mount is persistent across reboot by ensuring an /etc/fstab entry exists.
     _ensure_fstab_entry(ctx, device, mountpoint, fs_type)
 
     if not _is_mountpoint(ctx, mountpoint):
@@ -936,9 +1004,6 @@ def prepare_d3n_cache(
         logger.debug(f'[D3N] mountpoint already mounted according to _is_mountpoint(): {mountpoint}')
 
     if size_bytes is not None:
-        if not isinstance(size_bytes, int) or size_bytes <= 0:
-            raise Error(f'd3n_cache.size_bytes must be a positive integer, got {size_bytes!r}')
-
         avail = _avail_bytes(ctx, mountpoint)
         if avail < size_bytes:
             raise Error(
@@ -953,7 +1018,7 @@ def prepare_d3n_cache(
 
 def _has_filesystem(ctx: CephadmContext, device: str) -> bool:
     if not os.path.exists(device):
-        return False
+        raise Error(f'D3N device does not exist: {device}')
     out, _, code = call(ctx, ['blkid', '-o', 'value', '-s', 'TYPE', device])
     return code == 0 and bool(out.strip())
 
@@ -1046,7 +1111,7 @@ def deploy_daemon(
             },
         ).run()
 
-        # write conf
+        # write confgit status
         with write_new(mon_dir + '/config', owner=(uid, gid)) as f:
             f.write(config)
     else:
@@ -1055,10 +1120,18 @@ def deploy_daemon(
 
         if ident.daemon_type == 'rgw':
             config_json = fetch_configs(ctx)
-            d3n_cache = config_json.get('d3n_cache')
+            d3n_cache: Any = config_json.get('d3n_cache')
 
             if d3n_cache:
-                prepare_d3n_cache(ctx, d3n_cache, uid, gid)
+                try:
+                    d3n = D3NCache.from_json(d3n_cache)
+                except D3NCacheError as e:
+                    raise Error(str(e))
+                prepare_d3n_cache(ctx, d3n, uid, gid)
+                try:
+                    d3n_state(ctx, data_dir, D3NStateAction.WRITE, d3n, uid, gid)
+                except Exception as e:
+                    logger.warning(f'[D3N] failed to persist D3N state in {data_dir}: {e}')
 
     # only write out unit files and start daemon
     # with systemd if this is not a reconfig
@@ -4038,6 +4111,10 @@ def command_rm_daemon(ctx):
              verbosity=CallVerbosity.DEBUG)
 
     data_dir = ident.data_dir(ctx.data_dir)
+
+    if ident.daemon_type == 'rgw':
+        d3n_state(ctx, data_dir, action=D3NStateAction.CLEANUP)
+
     if ident.daemon_type in ['mon', 'osd', 'prometheus'] and \
        not ctx.force_delete_data:
         # rename it out of the way -- do not delete

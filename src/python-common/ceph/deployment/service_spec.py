@@ -38,6 +38,7 @@ from ceph.deployment.utils import unwrap_ipv6, valid_addr, verify_non_negative_i
 from ceph.deployment.utils import verify_positive_int, verify_non_negative_number
 from ceph.deployment.utils import verify_boolean, verify_enum, verify_int
 from ceph.deployment.utils import parse_combined_pem_file
+from ceph.cephadm.d3n import D3NCacheSpec, D3NCacheError
 from ceph.utils import is_hex
 from ceph.smb import constants as smbconst
 from ceph.smb import network as smbnet
@@ -1432,6 +1433,16 @@ class RGWSpec(ServiceSpec):
             rgw_frontend_port: 1234
             rgw_frontend_type: beast
             rgw_frontend_ssl_certificate: ...
+            # Optional: enable D3N (L1 datacache) for RGW
+            d3n_cache:
+                filesystem: xfs          # default: xfs
+                size: 10G                # required; int bytes or string with K/M/G/T/P
+                devices:                 # required; per-host list of devices
+                    host1:
+                      - /dev/nvme0n1
+                    host2:
+                      - /dev/nvme1n1
+                      - /dev/nvme2n1
 
     See also: :ref:`orchestrator-cli-service-spec`
     """
@@ -1637,42 +1648,10 @@ class RGWSpec(ServiceSpec):
                     )
 
         if self.d3n_cache:
-            if not isinstance(self.d3n_cache, dict):
-                raise SpecValidationError("d3n_cache must be a mapping")
-
-            filesystem = self.d3n_cache.get('filesystem', 'xfs')
-            size = self.d3n_cache.get('size')
-            devices = self.d3n_cache.get('devices')
-
-            if not size:
-                raise SpecValidationError('"d3n_cache.size" is required')
-
-            if filesystem not in ('xfs', 'ext4'):
-                raise SpecValidationError(
-                    f'Invalid filesystem "{filesystem}" in d3n_cache (supported: xfs, ext4)'
-                )
-
-            if not devices or not isinstance(devices, dict):
-                raise SpecValidationError(
-                    '"d3n_cache.devices" must be a mapping of host -> list of devices'
-                )
-
-            for host, devs in devices.items():
-                if not isinstance(host, str) or not host:
-                    raise SpecValidationError(
-                        'Invalid host key in d3n_cache.devices (must be non-empty string)'
-                    )
-
-                if not isinstance(devs, list) or not devs:
-                    raise SpecValidationError(
-                        f'"d3n_cache.devices[{host}]" must be a non-empty list of device paths'
-                    )
-
-                for dev in devs:
-                    if not isinstance(dev, str) or not dev.startswith('/dev/'):
-                        raise SpecValidationError(
-                            f'Invalid device path "{dev}" in d3n_cache.devices[{host}]'
-                        )
+            try:
+                D3NCacheSpec.from_json(self.d3n_cache)
+            except D3NCacheError as e:
+                raise SpecValidationError(str(e))
 
 
 yaml.add_representer(RGWSpec, ServiceSpec.yaml_representer)

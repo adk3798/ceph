@@ -1,9 +1,10 @@
 import logging
+import re
 import json
 import socket
 from enum import Enum
 from functools import wraps
-from typing import Optional, Callable, TypeVar, List, NewType, TYPE_CHECKING, Any, NamedTuple
+from typing import Optional, Callable, TypeVar, List, NewType, TYPE_CHECKING, Any, NamedTuple, Union
 from orchestrator import OrchestratorError
 import hashlib
 
@@ -42,6 +43,8 @@ NON_CEPH_IMAGE_TYPES = MONITORING_STACK_TYPES + ['nvmeof', 'smb'] + MGMT_GATEWAY
 
 # Used for _run_cephadm used for check-host etc that don't require an --image parameter
 cephadmNoImage = CephadmNoImage.token
+
+_SIZE_RE = re.compile(r'^\s*(\d+)\s*([KMGTP]?)\s*([iI]?[bB])?\s*$')
 
 
 class ContainerInspectInfo(NamedTuple):
@@ -174,3 +177,27 @@ def get_node_proxy_status_value(data: Any, key: str, lower: bool = False) -> str
     if not isinstance(value, str):
         return ''
     return value.lower() if lower else value
+
+
+def _size_to_bytes(v: Union[str, int]) -> int:
+    if isinstance(v, int):
+        return v
+    if isinstance(v, str):
+        m = _SIZE_RE.match(v)
+        if not m:
+            raise OrchestratorError(
+                f'invalid size "{v}" (examples: 10737418240, 10G, 512M)'
+            )
+        num = int(m.group(1))
+        unit = m.group(2) or ''
+        unit = unit.upper()
+        mult = {
+            '': 1,
+            'K': 1024,
+            'M': 1024**2,
+            'G': 1024**3,
+            'T': 1024**4,
+            'P': 1024**5,
+        }[unit]
+        return num * mult
+    raise OrchestratorError(f'invalid size type {type(v)} (expected int or str)')

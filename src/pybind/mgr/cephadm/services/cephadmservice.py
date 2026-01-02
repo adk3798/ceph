@@ -34,6 +34,7 @@ from orchestrator import (
 )
 from orchestrator._interface import daemon_type_to_service
 from cephadm import utils
+from ceph.cephadm.d3n import D3NCache, D3NCacheError, D3NCacheSpec
 from .service_registry import register_cephadm_service
 from cephadm.tlsobject_types import TLSObjectScope, TLSCredentials, EMPTY_TLS_CREDENTIALS
 from cephadm.ssl_cert_utils import extract_ips_and_fqdns_from_cert
@@ -45,8 +46,6 @@ logger = logging.getLogger(__name__)
 
 ServiceSpecs = TypeVar('ServiceSpecs', bound=ServiceSpec)
 AuthEntity = NewType('AuthEntity', str)
-
-_SIZE_RE = re.compile(r'^\s*(\d+)\s*([KMGTP]?)\s*([iI]?[bB])?\s*$')
 
 
 def get_auth_entity(daemon_type: str, daemon_id: str, host: str = "") -> AuthEntity:
@@ -1352,32 +1351,12 @@ class RgwService(CephService):
         self.mgr.spec_store.save(spec)
         self.mgr.trigger_connect_dashboard_rgw()
 
-    def _size_to_bytes(self, v: str) -> int:
-        if isinstance(v, int):
-            return v
-        if isinstance(v, str):
-            m = _SIZE_RE.match(v)
-            if not m:
-                raise OrchestratorError(f'invalid size "{v}" (examples: 10737418240, 10G, 512M)')
-            num = int(m.group(1))
-            unit = (m.group(2) or '').upper()
-            mult = {
-                '': 1,
-                'K': 1024,
-                'M': 1024**2,
-                'G': 1024**3,
-                'T': 1024**4,
-                'P': 1024**5,
-            }[unit]
-            return num * mult
-        raise OrchestratorError(f'invalid size type {type(v)} (expected int or str)')
-
     def _d3n_parse_dev_from_path(self, p: str) -> Optional[str]:
         # expected: /mnt/ceph-d3n/<fsid>/<dev>/rgw_datacache/...
 
         if not p:
             return None
-        logger.info(f"p: {p}")
+
         parts = [x for x in p.split('/') if x]
         try:
             i = parts.index('ceph-d3n')
@@ -1396,11 +1375,8 @@ class RgwService(CephService):
 
         for dd in rgw_daemons:
             # skip daemons that belong to the same service
-            try:
-                other_service = dd.service_name()
+            other_service = dd.service_name()
 
-            except Exception:
-                continue
             if other_service == service_name:
                 continue
 
@@ -1413,7 +1389,8 @@ class RgwService(CephService):
             if ret != 0:
                 continue
 
-            p = (out or '').strip()
+            p = out or ''
+            p = p.strip()
             if not p:
                 continue
 
@@ -1424,28 +1401,10 @@ class RgwService(CephService):
                     f'(daemon {dd.name()}). Refuse to reuse across services.'
                 )
 
-    def _d3n_get_host_devs(self, d3n: Dict[str, Any], host: str) -> Tuple[str, int, list[str]]:
-        fs_type = d3n.get('filesystem', 'xfs')
-        size_raw = d3n.get('size')
-        devices_map = d3n.get('devices')
-
-        if size_raw is None:
-            raise OrchestratorError('"d3n_cache.size" is required')
-        if fs_type not in ('xfs', 'ext4'):
-            raise OrchestratorError(f'Invalid filesystem "{fs_type}" (supported: xfs, ext4)')
-        if not isinstance(devices_map, dict):
-            raise OrchestratorError('"d3n_cache.devices" must be a mapping of host -> [devices]')
-
-        devs = devices_map.get(host)
-        if not isinstance(devs, list) or not devs:
-            raise OrchestratorError("no devices found")
-        devs = sorted(devs)
-
-        for d in devs:
-            if not isinstance(d, str) or not d.startswith('/dev/'):
-                raise OrchestratorError(f'invalid device path "{d}" in d3n_cache.devices for host "{host}"')
-
-        size_bytes = self._size_to_bytes(size_raw)
+    def _d3n_get_host_devs(self, d3n: D3NCacheSpec, host: str) -> Tuple[str, int, list[str]]:
+        fs_type = d3n.filesystem
+        devs = d3n.devices_for_host(host)
+        size_bytes = utils._size_to_bytes(d3n.size)
         return fs_type, size_bytes, devs
 
     def _d3n_gc_and_prune_alloc(
@@ -1484,6 +1443,17 @@ class RgwService(CephService):
         )
 
     def _d3n_get_allocator(self) -> Dict[Tuple[str, str], Dict[str, str]]:
+        """
+        Return the in-memory D3N device allocation map.
+
+        This is intentionally stored on the mgr module instance (self.mgr) as
+        ephemeral state to keep per-(service, host) device selections stable across
+        repeated scheduling cycles within the lifetime of the mgr process.
+
+        It is not persisted to disk/mon-store; it will be rebuilt after mgr restart
+        and also pruned via _d3n_gc_and_prune_alloc() based on currently running
+        daemons.
+        """
         alloc_all = getattr(self.mgr, "_d3n_device_alloc", None)
         if alloc_all is None:
             alloc_all = {}
@@ -1532,13 +1502,15 @@ class RgwService(CephService):
         self,
         daemon_spec: CephadmDaemonDeploySpec,
         spec: RGWSpec,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[D3NCache]:
 
-        d3n = getattr(spec, 'd3n_cache', None)
-        if not d3n:
+        d3n_raw = getattr(spec, 'd3n_cache', None)
+        if not d3n_raw:
             return None
-        if not isinstance(d3n, dict):
-            raise OrchestratorError('d3n_cache must be a mapping')
+        try:
+            d3n = D3NCacheSpec.from_json(d3n_raw)
+        except D3NCacheError as e:
+            raise OrchestratorError(str(e))
 
         host = daemon_spec.host
         if not host:
@@ -1581,13 +1553,13 @@ class RgwService(CephService):
         daemon_entity = f'client.rgw.{daemon_spec.daemon_id}'
         cache_path = os.path.join(mountpoint, 'rgw_datacache', daemon_entity)
 
-        return {
-            'device': device,
-            'filesystem': fs_type,
-            'size_bytes': size_bytes,
-            'mountpoint': mountpoint,
-            'cache_path': cache_path,
-        }
+        return D3NCache(
+            device=device,
+            filesystem=fs_type,
+            size_bytes=size_bytes,
+            mountpoint=mountpoint,
+            cache_path=cache_path,
+        )
 
     def prepare_create(self, daemon_spec: CephadmDaemonDeploySpec) -> CephadmDaemonDeploySpec:
         assert self.TYPE == daemon_spec.daemon_type
@@ -1752,8 +1724,13 @@ class RgwService(CephService):
         d3n_cache = daemon_spec.final_config.get('d3n_cache')
 
         if d3n_cache:
-            cache_path = d3n_cache.get('cache_path')
-            size = d3n_cache.get('size_bytes')
+            try:
+                d3n = D3NCache.from_json(d3n_cache)
+            except D3NCacheError as e:
+                raise OrchestratorError(str(e))
+
+            cache_path = d3n.cache_path
+            size = d3n.size_bytes
 
             self.mgr.check_mon_command({
                 'prefix': 'config set',
@@ -1884,7 +1861,7 @@ class RgwService(CephService):
 
         d3n_cache = self._compute_d3n_cache_for_daemon(daemon_spec, svc_spec)
         if d3n_cache:
-            config['d3n_cache'] = d3n_cache
+            config['d3n_cache'] = d3n_cache.to_json()
 
         rgw_deps = parent_deps + self.get_dependencies(self.mgr, svc_spec)
         return config, rgw_deps
