@@ -1347,6 +1347,7 @@ class NFSServiceSpec(ServiceSpec):
                  tls_debug: bool = False,
                  tls_min_version: Optional[str] = None,
                  tls_ciphers: Optional[str] = None,
+                 colocation_ports: Optional[List[List[int]]] = None,
                  ):
         assert service_type == 'nfs'
         super(NFSServiceSpec, self).__init__(
@@ -1372,6 +1373,10 @@ class NFSServiceSpec(ServiceSpec):
         self.idmap_conf = idmap_conf
         self.enable_nlm = enable_nlm
 
+        # colocation_ports is a list of port lists for ADDITIONAL colocated daemons
+        # The first daemon always uses [port, monitoring_port] from the spec
+        self.colocation_ports = colocation_ports
+
         # TLS fields
         self.tls_ciphers = tls_ciphers
         self.tls_ktls = tls_ktls
@@ -1385,12 +1390,54 @@ class NFSServiceSpec(ServiceSpec):
         # type: () -> str
         return 'conf-' + self.service_name()
 
+    def validate_colocation_ports(self) -> None:
+        """Validate colocation_ports configuration."""
+        if not self.colocation_ports:
+            return
+        # colocation_ports should have entries for additional daemons (not the first one)
+        # First daemon uses port and monitoring_port from spec
+        if self.placement:
+            if self.placement.count_per_host:
+                expected_per_host = self.placement.count_per_host - 1
+                actual_entries = len(self.colocation_ports)
+                if actual_entries < expected_per_host:
+                    raise SpecValidationError(
+                        f"Invalid NFS spec: colocation_ports has {actual_entries} entries, "
+                        f"but {expected_per_host} entries are required for count_per_host={self.placement.count_per_host}. "
+                        f"The first daemon per host uses port={self.port or 2049} and monitoring_port={self.monitoring_port or 9587}, "
+                        f"colocation_ports should specify ports for the remaining {expected_per_host} daemons per host."
+                    )
+            elif self.placement.count:
+                count = self.placement.count
+                expected_entries = count - 1
+                actual_entries = len(self.colocation_ports)
+                if actual_entries < expected_entries:
+                    raise SpecValidationError(
+                        f"Invalid NFS spec: colocation_ports has {actual_entries} entries, "
+                        f"but {expected_entries} entries are required for {count} colocated daemons. "
+                        f"The first daemon uses port={self.port or 2049} and monitoring_port={self.monitoring_port or 9587}, "
+                        f"colocation_ports should specify ports for the remaining {expected_entries} daemons."
+                    )
+        # Validate that each entry has correct number of ports (should match get_port_start())
+        base_ports = self.get_port_start()
+        expected_port_count = len(base_ports)
+        for idx, ports in enumerate(self.colocation_ports):
+            if len(ports) != expected_port_count:
+                raise SpecValidationError(
+                    f"Invalid NFS spec: colocation_ports[{idx}] has {len(ports)} ports, "
+                    f"but {expected_port_count} ports are required (NFS port + monitoring port). "
+                    f"Expected format: [{', '.join(['port'] * expected_port_count)}]"
+                )
+
     def validate(self) -> None:
         super(NFSServiceSpec, self).validate()
 
         if self.virtual_ip and (self.ip_addrs or self.networks):
             raise SpecValidationError("Invalid NFS spec: Cannot set virtual_ip and "
                                       f"{'ip_addrs' if self.ip_addrs else 'networks'} fields")
+
+        # Validate colocation_ports
+        self.validate_colocation_ports()
 
         # TLS certificate validation
         if self.ssl and not self.certificate_source:
