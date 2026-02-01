@@ -1235,7 +1235,7 @@ NFS_CORE_PARAM {
             "deployment_type": "standalone",
             "virtual_ip": None,
             "backend": [],
-            "placement": None
+            "placement": {}
         }}
 
     def test_cluster_info(self):
