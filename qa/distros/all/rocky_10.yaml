@@ -1,2 +1,10 @@
 os_type: rocky
 os_version: "10.1"
+
+tasks:
+- pexec:
+    all:
+    # in order to work around a possible nvme-cli <-> libnvme linking issue
+    # See https://tracker.ceph.com/issues/67684
+    - sudo dnf remove nvme-cli -y
+    - sudo dnf install nvmetcli nvme-cli -y
