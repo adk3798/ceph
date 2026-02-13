@@ -366,14 +366,23 @@ jq --null-input \
 cond="curl 'localhost:9095/api/v1/query?query=up'"
 is_available "prometheus" "$cond" 10
 
+# newer versions of grafana seem to complain about "localhost" specifically
+# for an address. From the grafana logs
+# invalid service state: Failed, expected: Running, failure: invalid IP address: localhost
+# In the cephadm mgr module we get the fqdn of the host we are deploying
+# on for the address, so this tries to do the same
+
+grafana_addr=$(hostname -f)
+sed "s/\blocalhost\b/${grafana_addr}/g" ${CEPHADM_SAMPLES_DIR}/grafana.json > ${CEPHADM_SAMPLES_DIR}/modified_grafana.json
+
 # add grafana
 jq --null-input \
     --arg fsid $FSID \
     --arg name grafana.a \
-    --argjson config_blobs "$(cat ${CEPHADM_SAMPLES_DIR}/grafana.json)" \
+    --argjson config_blobs "$(cat ${CEPHADM_SAMPLES_DIR}/modified_grafana.json)" \
     '{"fsid": $fsid, "name": $name, "config_blobs": $config_blobs}' | \
     ${CEPHADM//--image $IMAGE_DEFAULT/} _orch deploy
-cond="curl --insecure 'https://localhost:3000' | grep -q 'grafana'"
+cond="curl --insecure 'https://${grafana_addr}:3000' | grep -q 'grafana'"
 is_available "grafana" "$cond" 50
 
 # add nfs-ganesha
