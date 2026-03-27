@@ -1078,6 +1078,8 @@ def ceph_osds(ctx, config):
         cur = 0
         raw = config.get('raw-osds', False)
         use_skip_validation = True
+        set_objectstore = True
+        flags_checked = False
         for osd_id in sorted(id_to_remote.keys()):
             if raw:
                 raise ConfigError(
@@ -1116,17 +1118,36 @@ def ceph_osds(ctx, config):
             if osd_type:
                 add_osd_args.extend(['--osd-type', osd_type])
             objectstore = config.get('conf', {}).get('osd', {}).get('osd objectstore')
-            if objectstore:
-                add_osd_args.extend(['--objectstore', objectstore])
+            # if objectstore:
+            #     add_osd_args.extend(['--objectstore', objectstore])
+            extra_args = []
+            # FIXME: we should make a generic mechanism for
+            # telling which flag is unsupported
             if use_skip_validation:
+                extra_args.append('--skip-validation')
+            if objectstore and set_objectstore:
+                extra_args.extend(['--objectstore', objectstore])
+            if not flags_checked:
                 try:
-                    _shell(ctx, cluster_name, remote, add_osd_args + ['--skip-validation'])
+                    _shell(ctx, cluster_name, remote, add_osd_args + extra_args)
                 except Exception as e:
-                    log.warning(f"--skip-validation falied with error {e}. Retrying without it")
-                    use_skip_validation = False
+                    log.warning(f"`ceph orch daemon add osd` with error {e}")
+                    # --skip-validation was added before --objectstore, so if we get an
+                    # error due to the flag not being supported, remove objectstore first
+                    if use_skip_validation and set_objectstore:
+                        set_objectstore = False
+                        extra_args = ['--skip-validation']
+                        try:
+                            _shell(ctx, cluster_name, remote, add_osd_args + extra_args)
+                        except Exception as e:
+                            log.warning(f"`ceph orch daemon add osd` with error {e}")
+                            use_skip_validation = False
+                    elif use_skip_validation:
+                        use_skip_validation = False
                     _shell(ctx, cluster_name, remote, add_osd_args)
+                    flags_checked = True
             else:
-                _shell(ctx, cluster_name, remote, add_osd_args)
+                _shell(ctx, cluster_name, remote, add_osd_args + extra_args)
 
             ctx.daemons.register_daemon(
                 remote, 'osd', id_,
