@@ -858,6 +858,7 @@ class ServiceSpec(object):
             'jaeger-collector': TracingSpec,
             'jaeger-query': TracingSpec,
             'jaeger-tracing': TracingSpec,
+            'node-proxy': NodeProxySpec,
             SMBSpec.service_type: SMBSpec,
         }.get(service_type, cls)
         if ret == ServiceSpec and not service_type:
@@ -3544,3 +3545,29 @@ class SMBSpec(ServiceSpec):
 
 
 yaml.add_representer(SMBSpec, ServiceSpec.yaml_representer)
+
+
+class NodeProxySpec(ServiceSpec):
+    def __init__(self,
+                 service_type: str,
+                 placement: Optional[PlacementSpec] = None,
+                 unmanaged: bool = False,
+                 preview_only: bool = False,
+                 extra_container_args: Optional[GeneralArgList] = None,
+                 extra_entrypoint_args: Optional[GeneralArgList] = None,
+                 custom_configs: Optional[List[CustomConfig]] = None,
+                 ) -> None:
+        assert service_type == 'node-proxy'
+        super(NodeProxySpec, self).__init__(
+            'node-proxy',
+            placement=placement,
+            unmanaged=unmanaged,
+            preview_only=preview_only,
+            extra_container_args=extra_container_args,
+            extra_entrypoint_args=extra_entrypoint_args,
+            custom_configs=custom_configs,
+        )
+        self.validate()
+
+
+yaml.add_representer(NodeProxySpec, ServiceSpec.yaml_representer)
